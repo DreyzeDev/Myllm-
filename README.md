@@ -1,17 +1,17 @@
 <div align="center">
 
 <a href="https://github.com/DreyzeDev/Myllm-">
-  <img src="https://img.shields.io/badge/DREYZEDEV-MYLLM%20V1-7C3AED?style=for-the-badge&logo=github&logoColor=white" alt="DreyzeDev MyLLM V1">
+  <img src="https://img.shields.io/badge/DREYZEDEV-MYLLM%20V1-7C3AED?style=for-the-badge&amp;logo=github&amp;logoColor=white" alt="DreyzeDev MyLLM V1">
 </a>
 
-# MyLLM V1
+<h1>MyLLM V1</h1>
 
-### Собственная языковая модель, созданная с нуля
+<h3>Собственная языковая модель, созданная с нуля</h3>
 
-[Репозиторий](https://github.com/DreyzeDev/Myllm-) · Автор: [@DreyzeDev](https://github.com/DreyzeDev)
+<p><a href="https://github.com/DreyzeDev/Myllm-">Репозиторий</a> · Автор: <a href="https://github.com/DreyzeDev">@DreyzeDev</a></p>
 
-<img src="https://img.shields.io/badge/Python-3.10%2B-6E40C9?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
-<img src="https://img.shields.io/badge/PyTorch-2.3%2B-8B5CF6?style=flat-square&logo=pytorch&logoColor=white" alt="PyTorch 2.3+">
+<img src="https://img.shields.io/badge/Python-3.10%2B-6E40C9?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.10+">
+<img src="https://img.shields.io/badge/PyTorch-2.3%2B-8B5CF6?style=flat-square&amp;logo=pytorch&amp;logoColor=white" alt="PyTorch 2.3+">
 <img src="https://img.shields.io/badge/Weights-random%20initialization-4C1D95?style=flat-square" alt="Randomly initialized weights">
 
 </div>
