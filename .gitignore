@@ -5,8 +5,10 @@ venv/
 *.py[cod]
 *.log
 data/raw/*
+data/cleaned/*
 data/processed/*
 !data/raw/.gitkeep
+!data/cleaned/.gitkeep
 !data/processed/.gitkeep
 checkpoints/*
 !checkpoints/.gitkeep
@@ -14,4 +16,3 @@ checkpoints/*
 *.pt
 tokenizer/tokenizer.json
 tokenizer/*.json
-

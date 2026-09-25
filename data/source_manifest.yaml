@@ -1,0 +1,76 @@
+schema_version: 1
+dataset_name: MyLLM V1 starter pretraining corpus
+purpose: >-
+  A small, reproducible Russian-first corpus with a limited English component
+  for tokenizer development and future pretraining.
+generated_at: 2026-09-25
+corpus_files_are_committed: false
+sources:
+  - id: rsd_public_domain
+    name: Russian Stylometric Dataset (RSD), curated public-domain text selection
+    publisher: Boris Orekhov / nevmenandr
+    repository: https://github.com/nevmenandr/RSD
+    revision: 476876e8a5c430fb0f6e147bf1519c9b43699261
+    license: >-
+      Underlying works are stated by the upstream README to be public domain
+      under Russian law. Upstream metadata/scripts are GPL-3.0; metadata is
+      additionally described as CC BY-SA 3.0 in its FAQ and is not copied into
+      the training corpus.
+    license_url: https://github.com/nevmenandr/RSD#лицензия
+    scope_note: >-
+      Download only the six paths listed below, not the full repository. The
+      upstream collection spans multiple eras; inspect local rights status for
+      each intended jurisdiction and deployment.
+    source_document_count: 161
+    raw_bytes: 109615661
+    selected_paths:
+      - author/fiction/period/18/corpus/
+      - author/fiction/period/19-1/corpus/
+      - author/fiction/period/19-2/nonbrevia/corpus/
+      - author/fiction/period/19-20/corpus/
+      - author/nonfiction/journalism/corpus/
+      - author/nonfiction/science/combined/corpus/
+  - id: gutenberg_origin_species_1228
+    name: On the Origin of Species by Means of Natural Selection
+    author: Charles Darwin
+    author_died: 1882
+    publisher: Project Gutenberg
+    ebook_id: 1228
+    landing_page: https://www.gutenberg.org/ebooks/1228
+    download_url: https://www.gutenberg.org/cache/epub/1228/pg1228.txt
+    license: >-
+      Project Gutenberg identifies the eBook as public domain in the USA. In the
+      Russian Federation the standard term is the author's life plus 70 years
+      under Article 1281 of Part IV of the Civil Code; Darwin died in 1882.
+      The Project Gutenberg license and terms still apply to its branding.
+    license_url: https://www.gutenberg.org/policy/license
+    territorial_note: >-
+      Project Gutenberg asks non-US users to check local law. For other
+      jurisdictions verify the specific work and edition independently. The
+      cleaner removes the Project Gutenberg headers and service framing.
+    local_law_reference: https://rospatent.gov.ru/ru/documents/grazhdanskiy-kodeks-rossiyskoy-federacii-chast-chetvertaya
+    source_document_count: 1
+    raw_bytes: 970612
+    sha256: ededa9c0bf8761efed092c303b46c1c92de956838cba6249a33bedfd6d7363b4
+  - id: gutenberg_voyage_beagle_944
+    name: The Voyage of the Beagle
+    author: Charles Darwin
+    author_died: 1882
+    publisher: Project Gutenberg
+    ebook_id: 944
+    landing_page: https://www.gutenberg.org/ebooks/944
+    download_url: https://www.gutenberg.org/cache/epub/944/pg944.txt
+    license: >-
+      Project Gutenberg identifies the eBook as public domain in the USA. In the
+      Russian Federation the standard term is the author's life plus 70 years
+      under Article 1281 of Part IV of the Civil Code; Darwin died in 1882.
+      The Project Gutenberg license and terms still apply to its branding.
+    license_url: https://www.gutenberg.org/policy/license
+    territorial_note: >-
+      Project Gutenberg asks non-US users to check local law. For other
+      jurisdictions verify the specific work and edition independently. The
+      cleaner removes the Project Gutenberg headers and service framing.
+    local_law_reference: https://rospatent.gov.ru/ru/documents/grazhdanskiy-kodeks-rossiyskoy-federacii-chast-chetvertaya
+    source_document_count: 1
+    raw_bytes: 1227345
+    sha256: e13d57170a6dd9f7d97ddbc14cbde961dffbd95e8861ed199e5f00a525e7e52a

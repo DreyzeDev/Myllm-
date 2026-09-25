@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-25",
+  "dataset_version": "v1-curated",
+  "report_status": "reproduced from the locally downloaded and cleaned corpus; source text and JSONL files are intentionally excluded from Git",
+  "sources": 3,
+  "documents": 163,
+  "source_documents": {
+    "rsd_public_domain": 161,
+    "gutenberg_origin_species_1228": 1,
+    "gutenberg_voyage_beagle_944": 1
+  },
+  "raw_bytes": 111813618,
+  "clean_text_bytes": 111720555,
+  "clean_jsonl_bytes": 112092080,
+  "clean_words": 9651853,
+  "language_words": {
+    "ru": 9286317,
+    "en": 365536,
+    "other": 0
+  },
+  "language_share_percent": {
+    "ru": 96.2128,
+    "en": 3.7872,
+    "other": 0.0
+  },
+  "exact_duplicates_removed": 0,
+  "near_duplicates_removed": 0,
+  "invalid_records_removed": 0,
+  "records_rejected_by_basic_sensitive_patterns": 0,
+  "license_review": "PASS: upstream rights statements and territory limitations are recorded in source_manifest.yaml",
+  "pii_basic_filter": "PASS: UTF-8 corruption and common email, contact-phone, and exposed-credential patterns are checked; zero records triggered a pattern",
+  "tokenizer_training_data_ready": true,
+  "tokenizer_trained": false,
+  "pretraining_data_ready": false,
+  "pretraining_started": false
+}

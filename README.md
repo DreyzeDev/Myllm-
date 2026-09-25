@@ -106,12 +106,31 @@ Sanity check создаёт маленькую модель со случайн�
 
 Текст приводится к Unicode NFC, точные дубликаты удаляются. Train/validation разделяются до токенизации. Большой текст из одной записи делится на непересекающиеся части по границе слов.
 
+### Стартовый корпус
+
+В проекте есть воспроизводимые скрипты для небольшой русскоязычной коллекции
+общественно-доступных текстов и двух английских книг. Исходники и очищенный
+JSONL хранятся локально и не коммитятся в GitHub. Manifest фиксирует ссылки,
+лицензионные заметки и размеры; краткая статистика лежит в
+[`data/stats.json`](data/stats.json).
+
+```bash
+python scripts/download_dataset.py
+python scripts/clean_dataset.py --input data/raw --output data/cleaned
+```
+
+Загрузчик проверяет закреплённую версию RSD и контрольные суммы Project
+Gutenberg; по умолчанию размер загрузки ограничен 128 MiB. Project Gutenberg
+указывает, что его тексты public domain в США; перед использованием за пределами
+США проверьте местное законодательство. Детали и границы проверки описаны в
+[`data/README.md`](data/README.md).
+
 ### 1. Обучите tokenizer
 
 BPE обучается только на ваших текстах. Добавляются `<pad>`, `<bos>`, `<eos>`, `<unk>`, `<|system|>`, `<|user|>` и `<|assistant|>`.
 
 ```bash
-python scripts/train_tokenizer.py --input data/raw
+python scripts/train_tokenizer.py --input data/cleaned/corpus.jsonl
 ```
 
 Результат сохраняется в `tokenizer/tokenizer.json`. Конфиг модели автоматически обновит `model.vocab_size` до фактического размера словаря.
@@ -120,7 +139,7 @@ python scripts/train_tokenizer.py --input data/raw
 
 ```bash
 python scripts/prepare_dataset.py \
-  --input data/raw \
+  --input data/cleaned/corpus.jsonl \
   --tokenizer tokenizer/tokenizer.json \
   --output data/processed \
   --context-length 1024 \
@@ -185,7 +204,8 @@ configs/        настройки модели и обучения
 src/            модель, attention, tokenizer, dataset, train, evaluate, generation
 scripts/        команды для tokenizer, данных, обучения, чата и sanity check
 tests/          тесты модели, attention, tokenizer, данных и training step
-data/raw/       ваши исходные тексты
+data/raw/       исходные тексты (локально, игнорируются Git)
+data/cleaned/   очищенный starter corpus и статистика (локально)
 data/processed/ подготовленные блоки (локальные, игнорируются Git)
 checkpoints/    checkpoints (локальные, игнорируются Git)
 ```
