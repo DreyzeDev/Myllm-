@@ -86,6 +86,9 @@ def train_step(
         labels = labels.to(device, non_blocking=True)
         with _autocast(device, precision):
             output = model(input_ids, labels=labels)
+            if not torch.isfinite(output.loss):
+                optimizer.zero_grad(set_to_none=True)
+                raise FloatingPointError("Non-finite training loss detected; optimizer step was skipped")
             loss = output.loss / len(batch_list)
         if scaler is not None and scaler.is_enabled():
             scaler.scale(loss).backward()
@@ -94,7 +97,10 @@ def train_step(
         batch_losses.append(float(loss.detach().item()) * len(batch_list))
     if scaler is not None and scaler.is_enabled():
         scaler.unscale_(optimizer)
-    nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+    gradient_norm = nn.utils.clip_grad_norm_(model.parameters(), gradient_clip_norm)
+    if not torch.isfinite(gradient_norm):
+        optimizer.zero_grad(set_to_none=True)
+        raise FloatingPointError("Non-finite gradient norm detected; optimizer step was skipped")
     if scaler is not None and scaler.is_enabled():
         scaler.step(optimizer)
         scaler.update()
@@ -111,6 +117,7 @@ def save_checkpoint(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     best_validation_loss: float | None,
     scaler: torch.amp.GradScaler | None = None,
+    tokens_trained: int = 0,
 ) -> Path:
     target = Path(output_dir) / f"step_{step:05d}"
     target.mkdir(parents=True, exist_ok=True)
@@ -129,6 +136,7 @@ def save_checkpoint(
     state = {
         "step": step,
         "best_validation_loss": best_validation_loss,
+        "tokens_trained": tokens_trained,
         "saved_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     (target / "training_state.json").write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
@@ -142,7 +150,7 @@ def _load_training_state(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
     scaler: torch.amp.GradScaler | None = None,
-) -> tuple[int, float | None]:
+) -> tuple[int, float | None, int]:
     model.load_state_dict(torch.load(checkpoint_dir / "model.pt", map_location=device, weights_only=True), strict=True)
     optimizer.load_state_dict(torch.load(checkpoint_dir / "optimizer.pt", map_location=device, weights_only=True))
     scheduler.load_state_dict(torch.load(checkpoint_dir / "scheduler.pt", map_location=device, weights_only=True))
@@ -156,7 +164,7 @@ def _load_training_state(
         torch.set_rng_state(rng_state["cpu"])
         if device.type == "cuda" and "cuda" in rng_state:
             torch.cuda.set_rng_state_all(rng_state["cuda"])
-    return int(state["step"]), state.get("best_validation_loss")
+    return int(state["step"]), state.get("best_validation_loss"), int(state.get("tokens_trained", 0))
 
 
 def run_training(config_path: str | Path, resume_from: str | Path | None = None) -> None:
@@ -206,14 +214,27 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
 
     start_step = 0
     best_validation_loss: float | None = None
+    tokens_trained = 0
     if resume_from is not None:
-        start_step, best_validation_loss = _load_training_state(
+        start_step, best_validation_loss, tokens_trained = _load_training_state(
             Path(resume_from), model, optimizer, scheduler, device, scaler
         )
         logging.info("resumed_from=%s step=%d", resume_from, start_step)
 
     output_dir = Path(training["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+    initial_metrics_path = output_dir / "initial_metrics.json"
+    if start_step == 0 and not initial_metrics_path.exists():
+        initial_metrics = evaluate_model(model, train_loader, device, 1, precision)
+        initial_metrics["step"] = 0
+        if validation_loader is not None:
+            initial_metrics["validation_loss"] = evaluate_model(model, validation_loader, device, 1, precision)["loss"]
+        initial_metrics_path.write_text(json.dumps(initial_metrics, indent=2) + "\n", encoding="utf-8")
+        logging.info("initial_train_loss=%.4f", initial_metrics["loss"])
+    baseline_checkpoint = output_dir / "step_00000"
+    if start_step == 0 and not baseline_checkpoint.exists():
+        save_checkpoint(output_dir, 0, model, optimizer, scheduler, None, scaler, tokens_trained)
+        logging.info("untrained_baseline_saved=%s", baseline_checkpoint)
     log_path = output_dir / "training_log.jsonl"
     log_mode = "a" if start_step else "w"
     data_iterator = iter(train_loader)
@@ -232,25 +253,42 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
     last_saved = start_step
     with log_path.open(log_mode, encoding="utf-8") as log_file:
         for step in range(start_step + 1, int(training["max_steps"]) + 1):
-            loss = train_step(
-                model,
-                next_micro_batches(int(training["gradient_accumulation_steps"])),
-                optimizer,
-                device,
-                precision,
-                float(training["gradient_clip_norm"]),
-                scaler,
-            )
+            batches = next_micro_batches(int(training["gradient_accumulation_steps"]))
+            tokens_this_step = sum(int(labels.numel()) for _, labels in batches)
+            if device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(device)
+            try:
+                loss = train_step(
+                    model,
+                    batches,
+                    optimizer,
+                    device,
+                    precision,
+                    float(training["gradient_clip_norm"]),
+                    scaler,
+                )
+            except torch.cuda.OutOfMemoryError:
+                logging.exception("CUDA OOM at step=%d; no checkpoint was overwritten", step)
+                raise
+            if not math.isfinite(loss):
+                raise FloatingPointError(f"Non-finite training loss at step {step}")
             scheduler.step()
+            tokens_trained += tokens_this_step
             record: dict[str, float | int] = {
                 "step": step,
                 "train_loss": loss,
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
+                "tokens_trained": tokens_trained,
             }
+            if device.type == "cuda":
+                record["cuda_peak_memory_bytes"] = int(torch.cuda.max_memory_allocated(device))
+                record["cuda_reserved_memory_bytes"] = int(torch.cuda.memory_reserved(device))
             if step % int(training["log_interval"]) == 0:
                 logging.info("step=%d train_loss=%.4f lr=%.3g", step, loss, record["learning_rate"])
             if validation_loader is not None and step % int(training["evaluation_interval"]) == 0:
-                metrics = evaluate_model(model, validation_loader, device, int(training["evaluation_batches"]))
+                metrics = evaluate_model(
+                    model, validation_loader, device, int(training["evaluation_batches"]), precision
+                )
                 record["validation_loss"] = metrics["loss"]
                 record["perplexity"] = metrics["perplexity"]
                 logging.info("step=%d validation_loss=%.4f perplexity=%.2f", step, metrics["loss"], metrics["perplexity"])
@@ -259,12 +297,16 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
             log_file.write(json.dumps(record) + "\n")
             log_file.flush()
             if step % int(training["save_interval"]) == 0:
-                saved = save_checkpoint(output_dir, step, model, optimizer, scheduler, best_validation_loss, scaler)
+                saved = save_checkpoint(
+                    output_dir, step, model, optimizer, scheduler, best_validation_loss, scaler, tokens_trained
+                )
                 logging.info("checkpoint_saved=%s", saved)
                 last_saved = step
         final_step = int(training["max_steps"])
         if final_step > start_step and last_saved != final_step:
-            saved = save_checkpoint(output_dir, final_step, model, optimizer, scheduler, best_validation_loss, scaler)
+            saved = save_checkpoint(
+                output_dir, final_step, model, optimizer, scheduler, best_validation_loss, scaler, tokens_trained
+            )
             logging.info("checkpoint_saved=%s", saved)
 
 

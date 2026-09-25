@@ -76,6 +76,48 @@ def read_records(files: Iterable[Path], text_key: str = "text", deduplicate: boo
     return records, duplicates
 
 
+def iter_record_texts(files: Iterable[Path], text_key: str = "text") -> Iterator[str]:
+    """Read records one at a time so tokenizer/data preparation need not hold a corpus in RAM."""
+    for text, _ in iter_record_rows(files, text_key):
+        yield text
+
+
+def iter_record_rows(files: Iterable[Path], text_key: str = "text") -> Iterator[tuple[str, str | None]]:
+    """Stream normalized text with an optional source language label."""
+    for file in files:
+        if file.suffix.lower() == ".txt":
+            contents = file.read_text(encoding="utf-8-sig")
+            candidates = re.split(r"\n\s*\n", contents)
+            if len(candidates) == 1:
+                lines = [line for line in contents.splitlines() if line.strip()]
+                if len(lines) > 1:
+                    candidates = lines
+            for candidate in candidates:
+                text = _normalize(candidate)
+                if text:
+                    yield text, None
+            continue
+        with file.open("r", encoding="utf-8-sig") as handle:
+            for line_number, line in enumerate(handle, start=1):
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON in {file}:{line_number}: {exc}") from exc
+                if isinstance(row, str):
+                    candidate = row
+                    language = None
+                elif isinstance(row, dict) and isinstance(row.get(text_key), str):
+                    candidate = row[text_key]
+                    language = row.get("language") if isinstance(row.get("language"), str) else None
+                else:
+                    raise ValueError(f"Expected a string or an object with string key {text_key!r} in {file}:{line_number}")
+                text = _normalize(candidate)
+                if text:
+                    yield text, language
+
+
 def split_records(records: list[str], validation_fraction: float, seed: int) -> tuple[list[str], list[str]]:
     if not 0.0 <= validation_fraction < 1.0:
         raise ValueError("validation_fraction must be in [0, 1)")
@@ -101,22 +143,40 @@ def split_records(records: list[str], validation_fraction: float, seed: int) -> 
 
 
 def _write_blocks(records: list[str], tokenizer: ByteBPETokenizer, path: Path, block_length: int) -> tuple[int, int]:
-    eos_id = tokenizer.token_id("<eos>")
-    pending: list[int] = []
-    block_count = 0
-    token_count = 0
-    with path.open("wb") as output:
-        for record in records:
-            ids = tokenizer.encode(record)
-            ids.append(eos_id)
-            token_count += len(ids)
-            pending.extend(ids)
-            while len(pending) >= block_length:
-                block = np.asarray(pending[:block_length], dtype=np.uint16)
-                output.write(block.tobytes())
-                pending = pending[block_length:]
-                block_count += 1
-    return block_count, token_count
+    writer = _TokenBlockWriter(tokenizer, path, block_length)
+    for record in records:
+        writer.write(record)
+    return writer.close()
+
+
+class _TokenBlockWriter:
+    def __init__(self, tokenizer: ByteBPETokenizer, path: Path, block_length: int) -> None:
+        self.tokenizer = tokenizer
+        self.eos_id = tokenizer.token_id("<eos>")
+        self.path = path
+        self.block_length = block_length
+        self.pending: list[int] = []
+        self.block_count = 0
+        self.token_count = 0
+        self.output = path.open("wb")
+
+    def write(self, record: str) -> int:
+        ids = self.tokenizer.encode(record)
+        ids.append(self.eos_id)
+        self.token_count += len(ids)
+        written_tokens = len(ids)
+        self.pending.extend(ids)
+        while len(self.pending) >= self.block_length:
+            block = np.asarray(self.pending[:self.block_length], dtype=np.uint16)
+            self.output.write(block.tobytes())
+            del self.pending[:self.block_length]
+            self.block_count += 1
+        return written_tokens
+
+    def close(self) -> tuple[int, int]:
+        self.output.flush()
+        self.output.close()
+        return self.block_count, self.token_count
 
 
 def prepare_dataset(
@@ -131,19 +191,68 @@ def prepare_dataset(
 ) -> dict[str, object]:
     if context_length <= 0:
         raise ValueError("context_length must be positive")
+    if not 0.0 <= validation_fraction < 1.0:
+        raise ValueError("validation_fraction must be in [0, 1)")
     files = find_input_files(input_path)
-    records, duplicate_count = read_records(files, text_key, deduplicate)
-    if not records:
+    exact_hashes: set[bytes] = set()
+    split_hashes: list[int] = []
+    duplicate_count = 0
+    record_count = 0
+    seed_bytes = str(seed).encode("ascii") + b"\0"
+    for text in iter_record_texts(files, text_key):
+        exact_hash = hashlib.sha256(text.encode("utf-8")).digest()
+        if deduplicate and exact_hash in exact_hashes:
+            duplicate_count += 1
+            continue
+        exact_hashes.add(exact_hash)
+        split_hash = int.from_bytes(hashlib.sha256(seed_bytes + text.encode("utf-8")).digest()[:8], "big")
+        split_hashes.append(split_hash)
+        record_count += 1
+    if not record_count:
         raise ValueError("No non-empty text records were found in the input files")
-    train_records, validation_records = split_records(records, validation_fraction, seed)
     tokenizer = ByteBPETokenizer.load(tokenizer_path)
     if tokenizer.vocab_size > 65536:
         raise ValueError("The uint16 dataset format supports vocabularies up to 65,536 tokens")
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     block_length = context_length + 1
-    train_blocks, train_tokens = _write_blocks(train_records, tokenizer, destination / "train.bin", block_length)
-    val_blocks, val_tokens = _write_blocks(validation_records, tokenizer, destination / "validation.bin", block_length)
+    train_writer = _TokenBlockWriter(tokenizer, destination / "train.bin", block_length)
+    validation_writer = _TokenBlockWriter(tokenizer, destination / "validation.bin", block_length)
+    tokens_by_language: dict[str, dict[str, int]] = {"train": {}, "validation": {}}
+    words_by_language: dict[str, dict[str, int]] = {"train": {}, "validation": {}}
+    word_pattern = re.compile(r"[A-Za-z]+(?:['’][A-Za-z]+)?|[А-Яа-яЁё]+|\d+", re.UNICODE)
+    validation_hashes: set[int] = set()
+    if 0.0 < validation_fraction < 1.0 and record_count > 1:
+        validation_count = min(max(1, round(record_count * validation_fraction)), record_count - 1)
+        validation_hashes = set(sorted(split_hashes)[:validation_count])
+    if record_count == 1 and 0.0 < validation_fraction < 1.0:
+        only_record, language_hint = next(iter(iter_record_rows(files, text_key)))
+        language = language_hint or "unknown"
+        train_records, validation_records = split_records([only_record], validation_fraction, seed)
+        for record in train_records:
+            count = train_writer.write(record)
+            tokens_by_language["train"][language] = tokens_by_language["train"].get(language, 0) + count
+            words_by_language["train"][language] = words_by_language["train"].get(language, 0) + len(word_pattern.findall(record))
+        for record in validation_records:
+            count = validation_writer.write(record)
+            tokens_by_language["validation"][language] = tokens_by_language["validation"].get(language, 0) + count
+            words_by_language["validation"][language] = words_by_language["validation"].get(language, 0) + len(word_pattern.findall(record))
+    else:
+        seen_hashes: set[bytes] = set()
+        for text, language_hint in iter_record_rows(files, text_key):
+            exact_hash = hashlib.sha256(text.encode("utf-8")).digest()
+            if deduplicate and exact_hash in seen_hashes:
+                continue
+            seen_hashes.add(exact_hash)
+            split_hash = int.from_bytes(hashlib.sha256(seed_bytes + text.encode("utf-8")).digest()[:8], "big")
+            split = "validation" if split_hash in validation_hashes else "train"
+            writer = validation_writer if split == "validation" else train_writer
+            count = writer.write(text)
+            language = language_hint or "unknown"
+            tokens_by_language[split][language] = tokens_by_language[split].get(language, 0) + count
+            words_by_language[split][language] = words_by_language[split].get(language, 0) + len(word_pattern.findall(text))
+    train_blocks, train_tokens = train_writer.close()
+    val_blocks, val_tokens = validation_writer.close()
     metadata: dict[str, object] = {
         "format": "uint16_token_blocks",
         "context_length": context_length,
@@ -152,11 +261,41 @@ def prepare_dataset(
         "validation_blocks": val_blocks,
         "train_tokens_before_chunking": train_tokens,
         "validation_tokens_before_chunking": val_tokens,
-        "records": len(records),
+        "estimated_total_tokens": train_tokens + val_tokens,
+        "language_tokens": {
+            language: tokens_by_language["train"].get(language, 0) + tokens_by_language["validation"].get(language, 0)
+            for language in sorted(set(tokens_by_language["train"]) | set(tokens_by_language["validation"]))
+        },
+        "language_token_share_percent": {
+            language: round(
+                (tokens_by_language["train"].get(language, 0) + tokens_by_language["validation"].get(language, 0))
+                * 100 / max(1, train_tokens + val_tokens),
+                4,
+            )
+            for language in sorted(set(tokens_by_language["train"]) | set(tokens_by_language["validation"]))
+        },
+        "language_words": {
+            language: words_by_language["train"].get(language, 0) + words_by_language["validation"].get(language, 0)
+            for language in sorted(set(words_by_language["train"]) | set(words_by_language["validation"]))
+        },
+        "average_tokens_per_word": {
+            language: round(
+                (tokens_by_language["train"].get(language, 0) + tokens_by_language["validation"].get(language, 0))
+                / max(1, words_by_language["train"].get(language, 0) + words_by_language["validation"].get(language, 0)),
+                4,
+            )
+            for language in sorted(set(tokens_by_language["train"]) | set(tokens_by_language["validation"]))
+        },
+        "records": record_count,
         "duplicates_removed": duplicate_count,
         "tokenizer": str(Path(tokenizer_path)),
         "vocab_size": tokenizer.vocab_size,
         "seed": seed,
+        "split_strategy": "document_sha256_seeded_exact_fraction",
+        "validation_documents": min(max(1, round(record_count * validation_fraction)), record_count - 1)
+        if 0.0 < validation_fraction < 1.0 and record_count > 1
+        else 0,
+        "deduplicate": deduplicate,
     }
     (destination / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return metadata

@@ -186,7 +186,7 @@ def main() -> None:
     args = parser.parse_args()
     manifest = download_dataset(ROOT / args.output, args.max_download_mb, args.skip_rsd, args.skip_gutenberg, args.workers)
     print(f"Downloaded/verified {manifest['file_count']} files ({manifest['total_bytes']:,} bytes)")
-    print(f"Raw manifest: {ROOT / args.output / 'raw_manifest.json'}")
+    print("Raw manifest written: raw_manifest.json")
 
 
 if __name__ == "__main__":

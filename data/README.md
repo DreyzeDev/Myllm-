@@ -13,18 +13,26 @@ English works by Charles Darwin from Project Gutenberg. See
 document counts, byte sizes, URLs, and rights notes. Source texts are not bundled
 in this repository.
 
-| Source | Documents | Raw bytes | Rights summary |
-|---|---:|---:|---|
-| RSD, six pinned text collections | 161 | 109,615,661 | Upstream says the underlying works are public domain under Russian law |
-| Project Gutenberg #1228, *On the Origin of Species* | 1 | 970,612 | Project Gutenberg marks it public domain in the USA; Darwin died in 1882 |
-| Project Gutenberg #944, *The Voyage of the Beagle* | 1 | 1,227,345 | Project Gutenberg marks it public domain in the USA; Darwin died in 1882 |
+For V1 pretraining, the local dataset is expanded with pinned 2026-09-01
+Wikimedia dumps: Russian Wikipedia, Simple English Wikipedia, and English
+Wikibooks. Run `python scripts/download_wikimedia.py` and then convert each
+dump with `scripts/extract_wikimedia.py`; the extractor keeps current main-
+namespace pages and stores each original page URL for attribution. The Wikimedia
+terms describe eligible text contributions under CC BY-SA 4.0 and GFDL, with
+attribution requirements; see the source manifest for the terms link and dump
+checksums. The original XML archives and extracted JSONL remain local and are
+ignored by Git.
 
-The cleaned corpus has 163 documents and 9,651,853 words by the script's
-Unicode-aware counter. The normalized text payload is 111,720,555
-bytes. The on-disk JSONL is 112,092,080 bytes because each record carries source
-provenance and JSON framing. Russian accounts for 96.2128% of counted words and
-English for 3.7872%. See [`stats.json`](stats.json) for the full reproducible
-summary.
+| Source | Extracted documents | Cleaned documents | Raw bytes | Rights summary |
+|---|---:|---:|---:|---|
+| RSD, six pinned text collections | 161 | 161 | 109,615,661 | Upstream says the underlying works are public domain under Russian law |
+| Project Gutenberg #1228, *On the Origin of Species* | 1 | 1 | 970,612 | Project Gutenberg marks it public domain in the USA; Darwin died in 1882 |
+| Project Gutenberg #944, *The Voyage of the Beagle* | 1 | 1 | 1,227,345 | Project Gutenberg marks it public domain in the USA; Darwin died in 1882 |
+| Russian Wikipedia, pinned 2026-09-01 dump | 1,968,084 | 1,908,700 | 6,184,856,270 | Wikimedia text under CC BY-SA 4.0/GFDL terms; per-page URLs retained |
+| Simple English Wikipedia, pinned 2026-09-01 dump | 188,016 | 186,600 | 385,846,687 | Wikimedia text under CC BY-SA 4.0/GFDL terms; per-page URLs retained |
+| English Wikibooks, pinned 2026-09-01 dump | 72,754 | 70,600 | 207,339,557 | Wikimedia text under CC BY-SA 4.0/GFDL terms; per-page URLs retained |
+
+The cleaned corpus has 2,166,063 documents and 1,101,292,823 words. The normalized text payload is 12,906,723,910 bytes; the on-disk JSONL is 13,599,656,626 bytes. Russian accounts for 87.6537% of counted words and English for 12.3463%. The cleaner removed 922 near-duplicates and 1,785 records matching email, phone-context, or credential patterns. See [`stats.json`](stats.json) for the complete local report.
 
 RSD states that the works in its collection are public domain under Russian law.
 Its dataset metadata and scripts are GPL-3.0; the collection's own README also
@@ -41,7 +49,7 @@ special copyright exception.
 
 ```bash
 python scripts/download_dataset.py
-python scripts/clean_dataset.py --input data/raw --output data/cleaned
+python scripts/clean_dataset.py --input data/raw --output data/cleaned --workers 8
 ```
 
 The downloader pins the RSD Git commit, verifies each Git blob SHA, verifies
@@ -66,7 +74,7 @@ not. Once you have downloaded and cleaned the source files, train a tokenizer on
 your local cleaned JSONL and then prepare token blocks:
 
 ```bash
-python scripts/train_tokenizer.py --input data/cleaned/corpus.jsonl
+python scripts/train_tokenizer.py --input data/cleaned/corpus.jsonl --sample-fraction 0.1
 python scripts/prepare_dataset.py \
   --input data/cleaned/corpus.jsonl \
   --tokenizer tokenizer/tokenizer.json \
@@ -75,6 +83,18 @@ python scripts/prepare_dataset.py \
   --validation-fraction 0.01
 ```
 
-The tokenizer-training and model-pretraining commands are intentionally not run
-as part of dataset preparation. Prepared token blocks and checkpoints also stay
+The BPE tokenizer is trained from scratch on a deterministic 10% document
+sample to keep RAM use bounded; the complete cleaned corpus is used for token
+blocks and pretraining. Prepared token blocks, datasets, and checkpoints stay
 local and are excluded from Git.
+
+## Prepared V1 corpus snapshot
+
+For the local 2026-09-25 run, the 32,000-token tokenizer was trained on a
+deterministic sample of 216,607 of 2,166,063 cleaned documents. The complete
+corpus produced 2,097,957,189 estimated tokens. Token shares are 87.3961% Russian
+and 12.6039% English; average tokens per counted word are 1.8994 for Russian
+and 1.9447 for English. The seed-42 document-level 99/1 split contains
+2,026,536 train blocks and 20,250 validation blocks at context length 1,024.
+The block metadata and binary files are in ignored local directory
+`data/processed/full_v1`; `source_manifest.yaml` stores these measurements.

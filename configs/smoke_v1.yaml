@@ -8,30 +8,24 @@ model:
   rope_theta: 10000.0
   dropout: 0.0
   tie_embeddings: true
-tokenizer:
-  vocab_size: 32000
-  min_frequency: 2
-  text_key: text
+
 data:
-  train_dir: data/raw
-  processed_dir: data/processed/full_v1
-  validation_fraction: 0.01
-  deduplicate: true
-  seed: 42
+  processed_dir: data/processed/smoke
+
 training:
   batch_size: 4
   gradient_accumulation_steps: 8
   learning_rate: 0.0003
   min_learning_rate_ratio: 0.1
   weight_decay: 0.1
-  warmup_steps: 200
-  max_steps: 16000
+  warmup_steps: 1
+  max_steps: 3
   gradient_clip_norm: 1.0
-  save_interval: 100
-  evaluation_interval: 250
-  evaluation_batches: 50
-  log_interval: 10
+  save_interval: 2
+  evaluation_interval: 1
+  evaluation_batches: 2
+  log_interval: 1
   num_workers: 0
   precision: auto
   seed: 42
-  output_dir: checkpoints/v1-pretraining
+  output_dir: checkpoints/smoke-v1-batch4

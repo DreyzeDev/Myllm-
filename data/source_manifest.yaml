@@ -1,10 +1,70 @@
 schema_version: 1
-dataset_name: MyLLM V1 starter pretraining corpus
+dataset_name: MyLLM V1 Russian-first base pretraining corpus
 purpose: >-
-  A small, reproducible Russian-first corpus with a limited English component
-  for tokenizer development and future pretraining.
+  A reproducible corpus of openly licensed Russian and English encyclopedia and
+  educational text, supplemented by the existing public-domain starter corpus.
 generated_at: 2026-09-25
 corpus_files_are_committed: false
+final_corpus:
+  documents: 2166063
+  downloaded_source_bytes: 6889856132
+  cleaner_input_bytes: 13755655772
+  clean_text_bytes: 12906723910
+  jsonl_bytes: 13599656626
+  words: 1101292823
+  language_word_share_percent:
+    ru: 87.6537
+    en: 12.3463
+  exact_duplicates_removed: 0
+  near_duplicates_removed: 922
+  sensitive_records_removed: 1785
+tokenizer:
+  algorithm: byte-level BPE, trained from scratch
+  vocab_size: 32000
+  deterministic_document_sample_fraction: 0.1
+  documents_in_sample: 216607
+  total_clean_documents: 2166063
+  average_tokens_per_word:
+    ru: 1.8994
+    en: 1.9447
+token_blocks:
+  output: data/processed/full_v1
+  context_length: 1024
+  block_length: 1025
+  train_blocks: 2026536
+  validation_blocks: 20250
+  train_tokens_before_chunking: 2077200374
+  validation_tokens_before_chunking: 20756815
+  estimated_total_tokens: 2097957189
+  language_token_share_percent:
+    ru: 87.3961
+    en: 12.6039
+  split_strategy: document_sha256_seeded_exact_fraction
+  validation_fraction: 0.01
+  validation_documents: 21661
+  seed: 42
+pretraining_run:
+  model_parameters: 42082816
+  context_length: 1024
+  micro_batch_size: 4
+  gradient_accumulation_steps: 8
+  effective_tokens_per_optimizer_step: 32768
+  precision: bf16
+  optimizer: AdamW
+  target_steps: 16000
+  checkpointed_steps: 4600
+  checkpointed_tokens: 150732800
+  initial_train_loss: 10.497825622558594
+  latest_checkpoint_train_loss: 3.2668703198432922
+  best_validation_loss: 3.880247263908386
+  latest_validation_loss: 3.880247263908386
+  latest_validation_step: 4500
+  checkpoint: checkpoints/v1-pretraining/step_04600
+  resume_tested_on_full_data_smoke_run: true
+  nan_or_inf_encountered: false
+  cuda_oom_encountered: false
+  status: paused_by_user_at_checkpoint
+
 sources:
   - id: rsd_public_domain
     name: Russian Stylometric Dataset (RSD), curated public-domain text selection
@@ -22,6 +82,7 @@ sources:
       upstream collection spans multiple eras; inspect local rights status for
       each intended jurisdiction and deployment.
     source_document_count: 161
+    cleaned_document_count: 161
     raw_bytes: 109615661
     selected_paths:
       - author/fiction/period/18/corpus/
@@ -50,6 +111,7 @@ sources:
       cleaner removes the Project Gutenberg headers and service framing.
     local_law_reference: https://rospatent.gov.ru/ru/documents/grazhdanskiy-kodeks-rossiyskoy-federacii-chast-chetvertaya
     source_document_count: 1
+    cleaned_document_count: 1
     raw_bytes: 970612
     sha256: ededa9c0bf8761efed092c303b46c1c92de956838cba6249a33bedfd6d7363b4
   - id: gutenberg_voyage_beagle_944
@@ -72,5 +134,63 @@ sources:
       cleaner removes the Project Gutenberg headers and service framing.
     local_law_reference: https://rospatent.gov.ru/ru/documents/grazhdanskiy-kodeks-rossiyskoy-federacii-chast-chetvertaya
     source_document_count: 1
+    cleaned_document_count: 1
     raw_bytes: 1227345
     sha256: e13d57170a6dd9f7d97ddbc14cbde961dffbd95e8861ed199e5f00a525e7e52a
+  - id: ruwiki_cc_by_sa
+    name: Russian Wikipedia articles and primary meta-pages
+    publisher: Wikimedia Foundation
+    project: ruwiki
+    language: ru
+    snapshot: 20260901
+    url: https://dumps.wikimedia.org/ruwiki/20260901/ruwiki-20260901-pages-articles-multistream.xml.bz2
+    wiki_url: https://ru.wikipedia.org/
+    license: >-
+      User-contributed text is offered under CC BY-SA 4.0 and GFDL; this corpus
+      uses article namespace text and keeps the page URL with each document for
+      attribution. Imported pages can have additional compatible license terms.
+    license_url: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en
+    raw_bytes: 6184856270
+    official_sha1: 304a841954f69d0ea25d0ff6f46b313dfde19d57
+    sha256: df1be519a7520c36e3e318002490da77274adbd1dc4cc086271eaed906871db2
+    extracted_document_count: 1968084
+    extracted_jsonl_bytes: 12735502404
+    cleaned_document_count: 1908700
+  - id: simplewiki_cc_by_sa
+    name: Simple English Wikipedia articles and primary meta-pages
+    publisher: Wikimedia Foundation
+    project: simplewiki
+    language: en
+    snapshot: 20260901
+    url: https://dumps.wikimedia.org/simplewiki/20260901/simplewiki-20260901-pages-articles-multistream.xml.bz2
+    wiki_url: https://simple.wikipedia.org/
+    license: >-
+      User-contributed text is offered under CC BY-SA 4.0 and GFDL; this corpus
+      uses article namespace text and keeps the page URL with each document for
+      attribution. Imported pages can have additional compatible license terms.
+    license_url: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en
+    raw_bytes: 385846687
+    official_sha1: 50152ec5f40669eef3dc7b251d1a025fe3c0bb55
+    sha256: a16e59b4699c13a844e995cf7c6d0ba1d93dd61ed5f1e0e830fefd7eb90b6de4
+    extracted_document_count: 188016
+    extracted_jsonl_bytes: 385237057
+    cleaned_document_count: 186600
+  - id: enwikibooks_cc_by_sa
+    name: English Wikibooks current main-namespace articles
+    publisher: Wikimedia Foundation
+    project: enwikibooks
+    language: en
+    snapshot: 20260901
+    url: https://dumps.wikimedia.org/enwikibooks/20260901/enwikibooks-20260901-pages-articles-multistream.xml.bz2
+    wiki_url: https://en.wikibooks.org/
+    license: >-
+      User-contributed text is offered under CC BY-SA 4.0 and GFDL; this corpus
+      uses article namespace text and keeps the page URL with each document for
+      attribution. Imported pages can have additional compatible license terms.
+    license_url: https://foundation.wikimedia.org/wiki/Policy:Terms_of_Use/en
+    raw_bytes: 207339557
+    official_sha1: b77914248dbf39f4641956b79358cde5affa1dd0
+    sha256: d4aaf28674f4ad0aef7e3be78015ab95512b207593c83feddccd8c33ed9335d4
+    extracted_document_count: 72754
+    extracted_jsonl_bytes: 523102693
+    cleaned_document_count: 70600
