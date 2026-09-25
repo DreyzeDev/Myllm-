@@ -172,14 +172,14 @@ python scripts/prepare_dataset.py \
 python scripts/train_v1.py --config configs/model_v1.yaml
 ```
 
-Training pipeline поддерживает validation loss и perplexity, логи, сохранение/возобновление checkpoint, BF16 на подходящем GPU и FP16 fallback. Первый полный pretraining V1 с нуля прошёл на RTX 5060 с CUDA и BF16. Прогон приостановлен на сохранённом checkpoint `step_04600`; целевой объём этого запуска — 16 000 шагов.
+Training pipeline поддерживает validation loss и perplexity, логи, сохранение/возобновление checkpoint, BF16 на подходящем GPU и FP16 fallback. Первый полный-corpus pretraining V1 с нуля завершён на RTX 5060 с CUDA и BF16: 16 000 шагов.
 
-Продолжить обучение из checkpoint:
+Для следующего этапа pretraining сначала увеличьте `training.max_steps` в конфиге, затем возобновите обучение из финального checkpoint:
 
 ```bash
 python scripts/train_v1.py \
   --config configs/model_v1.yaml \
-  --resume-from checkpoints/v1-pretraining/step_04600
+  --resume-from checkpoints/v1-pretraining/step_16000
 ```
 
 `max_steps` задаёт итоговый номер шага, до которого нужно обучать. Checkpoint хранит веса, optimizer, scheduler, scaler и состояние обучения.
@@ -197,14 +197,14 @@ python scripts/train_v1.py \
 | Оценка объёма после токенизации | около 2 097 957 189 токенов |
 | Tokenizer | byte-level BPE, обучен с нуля, словарь 32 000; обучение на детерминированной выборке 10% документов |
 | Token blocks | context 1 024; train 2 026 536; validation 20 250 |
-| Обучено на checkpoint | 4 600 шагов; 150 732 800 токенов |
-| Train loss | 10,498 в начале; 3,267 на checkpoint `step_04600` |
-| Validation loss | 3,880; последняя оценка на шаге 4 500 |
-| Checkpoint | `checkpoints/v1-pretraining/step_04600` |
+| Обучено на checkpoint | 16 000 шагов; 524 288 000 токенов |
+| Train loss | 10,498 в начале; 2,772 на шаге 16 000 |
+| Validation loss | 3,447; лучшая и последняя оценка на шаге 16 000 |
+| Checkpoint | `checkpoints/v1-pretraining/step_16000` |
 
-Train/validation разделены на уровне документов по SHA-256 с seed 42; в validation выделено 1% документов. Возобновление было проверено на полном корпусе коротким smoke-run. Зафиксированных NaN/Inf и CUDA OOM не было. Результаты расширенного корпуса и запуска хранятся в [`data/source_manifest.yaml`](data/source_manifest.yaml); исходные тексты, token blocks и checkpoints остаются локальными и не коммитятся.
+Train/validation разделены на уровне документов по SHA-256 с seed 42; в validation выделено 1% документов. Возобновление проверено на коротком smoke-run и с production checkpoint. Зафиксированных NaN/Inf и CUDA OOM не было. Результаты расширенного корпуса и запуска хранятся в [`data/source_manifest.yaml`](data/source_manifest.yaml); исходные тексты, token blocks и checkpoints остаются локальными и не коммитятся.
 
-Это промежуточный base checkpoint, а не готовый чат-бот. Проверка генерации показала более структурированный текст, чем у необученной модели, но знания и продолжения пока ненадёжны; например, на prompt «Солнечная система состоит» модель выдала неверное продолжение «из трёх частей». Обучение можно продолжить командой выше.
+Это base checkpoint, а не готовый чат-бот. При одинаковых параметрах генерации необученная модель выдавала смешанный случайный текст; после обучения модель чаще строит русские фразы. Однако качество пока ограничено: продолжение «Трамвайная дорога…» для prompt «Москва — столица» повторяется, а «Солнечная система состоит из трёх частей» фактически неверно. Это подтверждает обучение языковым закономерностям, но не надёжность знаний.
 
 ## Evaluation и генерация
 
@@ -212,7 +212,7 @@ Train/validation разделены на уровне документов по 
 
 ```bash
 python -m src.evaluate \
-  --checkpoint checkpoints/v1-pretraining/step_04600 \
+  --checkpoint checkpoints/v1-pretraining/step_16000 \
   --data data/processed/full_v1
 ```
 
@@ -220,7 +220,7 @@ python -m src.evaluate \
 
 ```bash
 python scripts/chat.py \
-  --checkpoint checkpoints/v1-pretraining/step_04600 \
+  --checkpoint checkpoints/v1-pretraining/step_16000 \
   --tokenizer tokenizer/tokenizer.json
 ```
 
@@ -228,7 +228,7 @@ python scripts/chat.py \
 
 ```bash
 python -m src.generate \
-  --checkpoint checkpoints/v1-pretraining/step_04600 \
+  --checkpoint checkpoints/v1-pretraining/step_16000 \
   --tokenizer tokenizer/tokenizer.json \
   --prompt "Привет" \
   --max-new-tokens 80 \

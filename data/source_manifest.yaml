@@ -52,18 +52,19 @@ pretraining_run:
   precision: bf16
   optimizer: AdamW
   target_steps: 16000
-  checkpointed_steps: 4600
-  checkpointed_tokens: 150732800
+  checkpointed_steps: 16000
+  checkpointed_tokens: 524288000
   initial_train_loss: 10.497825622558594
-  latest_checkpoint_train_loss: 3.2668703198432922
-  best_validation_loss: 3.880247263908386
-  latest_validation_loss: 3.880247263908386
-  latest_validation_step: 4500
-  checkpoint: checkpoints/v1-pretraining/step_04600
+  latest_checkpoint_train_loss: 2.7721073031425476
+  best_validation_loss: 3.446992583274841
+  latest_validation_loss: 3.446992583274841
+  latest_validation_step: 16000
+  checkpoint: checkpoints/v1-pretraining/step_16000
   resume_tested_on_full_data_smoke_run: true
+  resume_tested_from_production_checkpoint: true
   nan_or_inf_encountered: false
   cuda_oom_encountered: false
-  status: paused_by_user_at_checkpoint
+  status: completed_to_target
 
 sources:
   - id: rsd_public_domain
