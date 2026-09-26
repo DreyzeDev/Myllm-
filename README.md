@@ -12,11 +12,11 @@
 
 <img src="https://img.shields.io/badge/Python-3.10%2B-6E40C9?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.10+">
 <img src="https://img.shields.io/badge/PyTorch-2.3%2B-8B5CF6?style=flat-square&amp;logo=pytorch&amp;logoColor=white" alt="PyTorch 2.3+">
-<img src="https://img.shields.io/badge/Weights-random%20initialization-4C1D95?style=flat-square" alt="Randomly initialized weights">
+<img src="https://img.shields.io/badge/Weights-42M%20base%20pretrained-4C1D95?style=flat-square" alt="42M base pretrained weights">
 
 </div>
 
-> **MyLLM V1 — это обучаемая основа, а не готовый чат-бот.** До обучения веса случайные, поэтому генерация будет бессмысленной. Готовые веса сторонних моделей не используются.
+> **MyLLM V1 — это base-модель, обученная с нуля, а не готовый чат-бот.** Веса начаты со случайной инициализации; pretrained weights сторонних моделей не использовались. Генерация всё ещё может повторяться и содержать фактические ошибки.
 
 ## О проекте
 
@@ -172,17 +172,20 @@ python scripts/prepare_dataset.py \
 python scripts/train_v1.py --config configs/model_v1.yaml
 ```
 
-Training pipeline поддерживает validation loss и perplexity, логи, сохранение/возобновление checkpoint, BF16 на подходящем GPU и FP16 fallback. Первый полный-corpus pretraining V1 с нуля завершён на RTX 5060 с CUDA и BF16: 16 000 шагов.
+Training pipeline поддерживает validation loss и perplexity, логи, сохранение/возобновление checkpoint, BF16 на подходящем GPU и FP16 fallback. Base pretraining V1 с нуля продолжен на RTX 5060 с CUDA и BF16 до суммарных 32 000 шагов.
 
-Для следующего этапа pretraining сначала увеличьте `training.max_steps` в конфиге, затем возобновите обучение из финального checkpoint:
+Второй этап продолжил optimizer state из step_16000 и начал отдельный cosine schedule: LR от 3e-5 до 9e-6 на 16 000 шагов. Для его первого запуска scheduler сбрасывался один раз без сброса весов; при последующем resume scheduler загружается из checkpoint. Полный checkpoint сохранялся каждые 1 000 шагов, validation считалась каждые 250 шагов.
+
+
+Если этап прервётся до цели, возобновите его из последнего полного checkpoint без --reset-scheduler, например:
 
 ```bash
 python scripts/train_v1.py \
-  --config configs/model_v1.yaml \
-  --resume-from checkpoints/v1-pretraining/step_16000
+  --config configs/continued_pretraining_v1.yaml \
+  --resume-from checkpoints/v1-pretraining/step_31000
 ```
 
-`max_steps` задаёт итоговый номер шага, до которого нужно обучать. Checkpoint хранит веса, optimizer, scheduler, scaler и состояние обучения.
+Флаг --reset-scheduler нужен только для первого перехода с step_16000 на новую фазу. Checkpoint хранит веса, optimizer, scheduler, scaler и состояние обучения.
 
 ### Результат первого цикла pretraining
 
@@ -206,13 +209,30 @@ Train/validation разделены на уровне документов по 
 
 Это base checkpoint, а не готовый чат-бот. При одинаковых параметрах генерации необученная модель выдавала смешанный случайный текст; после обучения модель чаще строит русские фразы. Однако качество пока ограничено: продолжение «Трамвайная дорога…» для prompt «Москва — столица» повторяется, а «Солнечная система состоит из трёх частей» фактически неверно. Это подтверждает обучение языковым закономерностям, но не надёжность знаний.
 
+### Продолжение base pretraining: шаги 16 000–32 000
+
+Вторая фаза завершена без сброса весов и без SFT. Использовались прежняя архитектура V1 (42 082 816 параметров, context length 1 024), micro-batch 4, gradient accumulation 8, CUDA/BF16 и AdamW. Из-за ограниченного свободного места полные checkpoints второй фазы сохранялись каждые 1 000 шагов; все checkpoints первой фазы сохранены.
+
+| Показатель | Результат после второй фазы |
+|---|---:|
+| Суммарное обучение | 32 000 шагов; 1 048 576 000 токенов |
+| Train loss | 2,8728 на шаге 32 000 |
+| Best/latest validation loss | 3,3861 на шаге 32 000 |
+| Continued-phase LR | 3e-5 → 9e-6, cosine, 16 000 шагов |
+| Checkpoint | checkpoints/v1-pretraining/step_32000 |
+| Prompt sampling | temperature 0,7; top-p 0,9; top-k 50; repetition penalty 1,15 |
+| Validation guard | остановка после 4 последовательных повышений; не сработал |
+| NaN/Inf и CUDA OOM | не встретились |
+
+Одинаковые prompts проверялись на шагах 0, 16 000 и далее каждые 2 000 шагов. Локальные результаты лежат в checkpoints/v1-pretraining/prompt_evaluations.jsonl и не коммитятся. На 32 000 шаге продолжение «Москва — столица» всё ещё уходило в текст о трамваях, поэтому checkpoint остаётся экспериментальной base-моделью с ограниченным качеством.
+
 ## Evaluation и генерация
 
 Посчитать validation loss и perplexity:
 
 ```bash
 python -m src.evaluate \
-  --checkpoint checkpoints/v1-pretraining/step_16000 \
+  --checkpoint checkpoints/v1-pretraining/step_32000 \
   --data data/processed/full_v1
 ```
 
@@ -220,7 +240,7 @@ python -m src.evaluate \
 
 ```bash
 python scripts/chat.py \
-  --checkpoint checkpoints/v1-pretraining/step_16000 \
+  --checkpoint checkpoints/v1-pretraining/step_32000 \
   --tokenizer tokenizer/tokenizer.json
 ```
 
@@ -228,7 +248,7 @@ python scripts/chat.py \
 
 ```bash
 python -m src.generate \
-  --checkpoint checkpoints/v1-pretraining/step_16000 \
+  --checkpoint checkpoints/v1-pretraining/step_32000 \
   --tokenizer tokenizer/tokenizer.json \
   --prompt "Привет" \
   --max-new-tokens 80 \

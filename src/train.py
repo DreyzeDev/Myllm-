@@ -16,8 +16,77 @@ from torch.utils.data import DataLoader
 from src.config import ModelConfig, load_config, model_config_dict
 from src.dataset import TokenBlockDataset
 from src.evaluate import evaluate_model
+from src.generate import generate_tokens
 from src.model import DecoderOnlyTransformer
+from src.tokenizer import ByteBPETokenizer
 from src.utils import configure_logging, count_parameters, select_device, set_seed
+
+
+PROMPT_EVAL_PROMPTS = (
+    "Москва — столица",
+    "Земля вращается вокруг",
+    "Солнечная система состоит из",
+    "Вода при нормальном атмосферном давлении",
+    "Python — это",
+    "Столица Франции —",
+    "2 + 2 =",
+)
+
+
+def evaluate_fixed_prompts(
+    model: DecoderOnlyTransformer,
+    tokenizer: ByteBPETokenizer,
+    step: int,
+    output_path: str | Path,
+    max_new_tokens: int,
+    temperature: float,
+    top_k: int,
+    top_p: float,
+    repetition_penalty: float,
+    seed: int,
+) -> None:
+    output_file = Path(output_path)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    cpu_rng_state = torch.get_rng_state()
+    cuda_rng_states = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    was_training = model.training
+    try:
+        model.eval()
+        eos_token_id = tokenizer.token_id("<eos>")
+        with output_file.open("a", encoding="utf-8") as log_file:
+            for prompt in PROMPT_EVAL_PROMPTS:
+                prompt_ids = tokenizer.encode(prompt, add_bos=True)
+                output_ids = generate_tokens(
+                    model,
+                    prompt_ids,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_k=top_k,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                    seed=seed,
+                    eos_token_id=eos_token_id,
+                )
+                continuation = tokenizer.decode(output_ids[len(prompt_ids) :])
+                record = {
+                    "step": step,
+                    "prompt": prompt,
+                    "continuation": continuation,
+                    "temperature": temperature,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                    "repetition_penalty": repetition_penalty,
+                    "seed": seed,
+                }
+                log_file.write(json.dumps(record, ensure_ascii=False) + "\n")
+                log_file.flush()
+                logging.info("prompt_eval step=%d prompt=%r continuation=%r", step, prompt, continuation)
+    finally:
+        if was_training:
+            model.train()
+        torch.set_rng_state(cpu_rng_state)
+        if cuda_rng_states is not None:
+            torch.cuda.set_rng_state_all(cuda_rng_states)
 
 
 def resolve_precision(requested: str, device: torch.device) -> str:
@@ -150,10 +219,12 @@ def _load_training_state(
     scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
     scaler: torch.amp.GradScaler | None = None,
+    load_scheduler: bool = True,
 ) -> tuple[int, float | None, int]:
     model.load_state_dict(torch.load(checkpoint_dir / "model.pt", map_location=device, weights_only=True), strict=True)
     optimizer.load_state_dict(torch.load(checkpoint_dir / "optimizer.pt", map_location=device, weights_only=True))
-    scheduler.load_state_dict(torch.load(checkpoint_dir / "scheduler.pt", map_location=device, weights_only=True))
+    if load_scheduler:
+        scheduler.load_state_dict(torch.load(checkpoint_dir / "scheduler.pt", map_location=device, weights_only=True))
     scaler_path = checkpoint_dir / "scaler.pt"
     if scaler is not None and scaler_path.exists():
         scaler.load_state_dict(torch.load(scaler_path, map_location="cpu", weights_only=True))
@@ -167,11 +238,26 @@ def _load_training_state(
     return int(state["step"]), state.get("best_validation_loss"), int(state.get("tokens_trained", 0))
 
 
-def run_training(config_path: str | Path, resume_from: str | Path | None = None) -> None:
+def run_training(
+    config_path: str | Path,
+    resume_from: str | Path | None = None,
+    reset_scheduler: bool = False,
+) -> None:
     config = load_config(config_path)
     model_config = ModelConfig.from_dict(config["model"])
     training = config["training"]
     data_options = config["data"]
+    if reset_scheduler and resume_from is None:
+        raise ValueError("--reset-scheduler requires --resume-from")
+    schedule_steps = int(training.get("schedule_steps", training["max_steps"]))
+    if schedule_steps <= 0:
+        raise ValueError("schedule_steps must be positive")
+    validation_increase_patience = int(training.get("validation_increase_patience", 0))
+    if validation_increase_patience < 0:
+        raise ValueError("validation_increase_patience must not be negative")
+    prompt_evaluation_interval = int(training.get("prompt_evaluation_interval", 0))
+    if prompt_evaluation_interval < 0:
+        raise ValueError("prompt_evaluation_interval must not be negative")
     set_seed(int(training["seed"]))
     device = select_device()
     precision = resolve_precision(str(training["precision"]), device)
@@ -183,7 +269,7 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
     scheduler = build_scheduler(
         optimizer,
         int(training["warmup_steps"]),
-        int(training["max_steps"]),
+        schedule_steps,
         float(training["min_learning_rate_ratio"]),
     )
     scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda" and precision == "fp16"))
@@ -217,9 +303,38 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
     tokens_trained = 0
     if resume_from is not None:
         start_step, best_validation_loss, tokens_trained = _load_training_state(
-            Path(resume_from), model, optimizer, scheduler, device, scaler
+            Path(resume_from), model, optimizer, scheduler, device, scaler, load_scheduler=not reset_scheduler
         )
         logging.info("resumed_from=%s step=%d", resume_from, start_step)
+    if reset_scheduler:
+        reset_at_step = training.get("reset_scheduler_at_step")
+        if reset_at_step is not None and start_step != int(reset_at_step):
+            raise ValueError(
+                f"Scheduler reset is only allowed at step {int(reset_at_step)}, got checkpoint step {start_step}"
+            )
+        base_learning_rate = float(training["learning_rate"])
+        for group in optimizer.param_groups:
+            group["lr"] = base_learning_rate
+            group["initial_lr"] = base_learning_rate
+        scheduler = build_scheduler(
+            optimizer,
+            int(training["warmup_steps"]),
+            schedule_steps,
+            float(training["min_learning_rate_ratio"]),
+        )
+        logging.info(
+            "scheduler_reset=True schedule_steps=%d warmup_steps=%d base_lr=%.3g min_lr=%.3g",
+            schedule_steps,
+            int(training["warmup_steps"]),
+            base_learning_rate,
+            base_learning_rate * float(training["min_learning_rate_ratio"]),
+        )
+    else:
+        logging.info(
+            "scheduler_resume=checkpoint schedule_steps=%d warmup_steps=%d",
+            schedule_steps,
+            int(training["warmup_steps"]),
+        )
 
     output_dir = Path(training["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -237,6 +352,19 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
         logging.info("untrained_baseline_saved=%s", baseline_checkpoint)
     log_path = output_dir / "training_log.jsonl"
     log_mode = "a" if start_step else "w"
+    validation_history_by_step: dict[int, float] = {}
+    if start_step and validation_increase_patience and log_path.exists():
+        with log_path.open(encoding="utf-8") as existing_log:
+            for line in existing_log:
+                try:
+                    prior_record = json.loads(line)
+                    prior_step = int(prior_record["step"])
+                    prior_loss = float(prior_record["validation_loss"])
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if prior_step <= start_step:
+                    validation_history_by_step[prior_step] = prior_loss
+    validation_history = [validation_history_by_step[step] for step in sorted(validation_history_by_step)]
     data_iterator = iter(train_loader)
 
     def next_micro_batches(count: int) -> list[tuple[torch.Tensor, torch.Tensor]]:
@@ -251,6 +379,7 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
         return result
 
     last_saved = start_step
+    completed_step = start_step
     with log_path.open(log_mode, encoding="utf-8") as log_file:
         for step in range(start_step + 1, int(training["max_steps"]) + 1):
             batches = next_micro_batches(int(training["gradient_accumulation_steps"]))
@@ -272,6 +401,7 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
                 raise
             if not math.isfinite(loss):
                 raise FloatingPointError(f"Non-finite training loss at step {step}")
+            completed_step = step
             scheduler.step()
             tokens_trained += tokens_this_step
             record: dict[str, float | int] = {
@@ -285,27 +415,61 @@ def run_training(config_path: str | Path, resume_from: str | Path | None = None)
                 record["cuda_reserved_memory_bytes"] = int(torch.cuda.memory_reserved(device))
             if step % int(training["log_interval"]) == 0:
                 logging.info("step=%d train_loss=%.4f lr=%.3g", step, loss, record["learning_rate"])
+            stop_for_validation_rise = False
             if validation_loader is not None and step % int(training["evaluation_interval"]) == 0:
                 metrics = evaluate_model(
                     model, validation_loader, device, int(training["evaluation_batches"]), precision
                 )
+                if not math.isfinite(float(metrics["loss"])) or not math.isfinite(float(metrics["perplexity"])):
+                    raise FloatingPointError(f"Non-finite validation metric at step {step}")
                 record["validation_loss"] = metrics["loss"]
                 record["perplexity"] = metrics["perplexity"]
+                validation_history.append(float(metrics["loss"]))
+                increase_streak = 0
+                for index in range(len(validation_history) - 1, 0, -1):
+                    if validation_history[index] > validation_history[index - 1]:
+                        increase_streak += 1
+                    else:
+                        break
+                if validation_increase_patience:
+                    record["validation_increase_streak"] = increase_streak
+                    stop_for_validation_rise = increase_streak >= validation_increase_patience
                 logging.info("step=%d validation_loss=%.4f perplexity=%.2f", step, metrics["loss"], metrics["perplexity"])
                 if best_validation_loss is None or metrics["loss"] < best_validation_loss:
                     best_validation_loss = metrics["loss"]
             log_file.write(json.dumps(record) + "\n")
             log_file.flush()
-            if step % int(training["save_interval"]) == 0:
+            if step % int(training["save_interval"]) == 0 or stop_for_validation_rise:
                 saved = save_checkpoint(
                     output_dir, step, model, optimizer, scheduler, best_validation_loss, scaler, tokens_trained
                 )
                 logging.info("checkpoint_saved=%s", saved)
                 last_saved = step
-        final_step = int(training["max_steps"])
-        if final_step > start_step and last_saved != final_step:
+            if prompt_evaluation_interval and step % prompt_evaluation_interval == 0:
+                tokenizer = ByteBPETokenizer.load(training.get("prompt_evaluation_tokenizer", "tokenizer/tokenizer.json"))
+                evaluate_fixed_prompts(
+                    model,
+                    tokenizer,
+                    step,
+                    output_dir / training.get("prompt_evaluation_log", "prompt_evaluations.jsonl"),
+                    int(training.get("prompt_max_new_tokens", 64)),
+                    float(training.get("prompt_temperature", 0.7)),
+                    int(training.get("prompt_top_k", 50)),
+                    float(training.get("prompt_top_p", 0.9)),
+                    float(training.get("prompt_repetition_penalty", 1.15)),
+                    int(training.get("prompt_seed", 42)),
+                )
+            if stop_for_validation_rise:
+                logging.warning(
+                    "stopping_after_validation_increase_streak=%d step=%d; checkpoint_saved=%d",
+                    validation_increase_patience,
+                    step,
+                    last_saved,
+                )
+                break
+        if completed_step > start_step and last_saved != completed_step:
             saved = save_checkpoint(
-                output_dir, final_step, model, optimizer, scheduler, best_validation_loss, scaler, tokens_trained
+                output_dir, completed_step, model, optimizer, scheduler, best_validation_loss, scaler, tokens_trained
             )
             logging.info("checkpoint_saved=%s", saved)
 
@@ -314,9 +478,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Train the from-scratch decoder-only model")
     parser.add_argument("--config", default="configs/model_v1.yaml")
     parser.add_argument("--resume-from", default=None)
+    parser.add_argument(
+        "--reset-scheduler",
+        action="store_true",
+        help="restore model/optimizer state but start a fresh schedule from the configured learning rate",
+    )
     args = parser.parse_args()
     configure_logging()
-    run_training(args.config, args.resume_from)
+    run_training(args.config, args.resume_from, reset_scheduler=args.reset_scheduler)
 
 
 if __name__ == "__main__":

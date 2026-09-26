@@ -105,3 +105,18 @@ def test_training_pipeline_saves_and_resumes_checkpoint(tmp_path) -> None:
     assert [record["step"] for record in records] == [1, 2]
     assert "validation_loss" in records[-1]
     assert "perplexity" in records[-1]
+
+    config["training"]["max_steps"] = 3
+    config["training"]["schedule_steps"] = 2
+    config["training"]["reset_scheduler_at_step"] = 2
+    config["training"]["learning_rate"] = 0.005
+    config["training"]["warmup_steps"] = 0
+    write_config()
+    run_training(config_path, resume_from=second_checkpoint, reset_scheduler=True)
+
+    third_checkpoint = tmp_path / "checkpoints" / "step_00003"
+    state = json.loads((third_checkpoint / "training_state.json").read_text(encoding="utf-8"))
+    scheduler = torch.load(third_checkpoint / "scheduler.pt", map_location="cpu", weights_only=True)
+    assert state["step"] == 3
+    assert scheduler["last_epoch"] == 1
+    assert scheduler["base_lrs"] == [0.005, 0.005]

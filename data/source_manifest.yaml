@@ -51,15 +51,42 @@ pretraining_run:
   effective_tokens_per_optimizer_step: 32768
   precision: bf16
   optimizer: AdamW
-  target_steps: 16000
-  checkpointed_steps: 16000
-  checkpointed_tokens: 524288000
+  target_steps: 32000
+  checkpointed_steps: 32000
+  checkpointed_tokens: 1048576000
   initial_train_loss: 10.497825622558594
-  latest_checkpoint_train_loss: 2.7721073031425476
-  best_validation_loss: 3.446992583274841
-  latest_validation_loss: 3.446992583274841
-  latest_validation_step: 16000
-  checkpoint: checkpoints/v1-pretraining/step_16000
+  latest_checkpoint_train_loss: 2.8727751672267914
+  best_validation_loss: 3.3860871505737307
+  latest_validation_loss: 3.3860871505737307
+  latest_validation_step: 32000
+  checkpoint: checkpoints/v1-pretraining/step_32000
+  continued_phase:
+    start_checkpoint: checkpoints/v1-pretraining/step_16000
+    start_step: 16000
+    completed_steps: 16000
+    optimizer_state_restored: true
+    scheduler_reset_once: true
+    scheduler: cosine
+    learning_rate_start: 0.00003
+    learning_rate_end: 0.000009
+    warmup_steps: 0
+    schedule_steps: 16000
+    checkpoint_interval_steps: 1000
+    validation_interval_steps: 250
+    validation_batches: 50
+    validation_increase_patience: 4
+    validation_increase_streak_triggered: false
+  prompt_evaluation:
+    steps: [0, 16000, 18000, 20000, 22000, 24000, 26000, 28000, 30000, 32000]
+    interval_steps: 2000
+    output: checkpoints/v1-pretraining/prompt_evaluations.jsonl
+    temperature: 0.7
+    top_p: 0.9
+    top_k: 50
+    repetition_penalty: 1.15
+    seed: 42
+    prompt_count_per_step: 7
+  resume_tested_on_final_checkpoint: true
   resume_tested_on_full_data_smoke_run: true
   resume_tested_from_production_checkpoint: true
   nan_or_inf_encountered: false
