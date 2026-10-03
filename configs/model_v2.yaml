@@ -1,0 +1,62 @@
+model:
+  vocab_size: 32000
+  context_length: 1024
+  hidden_size: 768
+  num_layers: 12
+  num_heads: 12
+  intermediate_size: 2048
+  rope_theta: 10000.0
+  dropout: 0.0
+  tie_embeddings: true
+
+tokenizer:
+  vocab_size: 32000
+  min_frequency: 2
+  text_key: text
+
+data:
+  train_dir: data/raw
+  # Existing V1 blocks use the same tokenizer, context, and uint16 block format.
+  processed_dir: data/processed/full_v1
+  validation_fraction: 0.01
+  deduplicate: true
+  seed: 42
+
+training:
+  # Full V2 pretraining settings. The train script initializes random weights
+  # and starts fresh unless --resume-from is explicitly passed.
+  batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 0.0002
+  min_learning_rate_ratio: 0.1
+  weight_decay: 0.1
+  warmup_steps: 5071
+  max_steps: 126783
+  schedule_steps: 126783
+  gradient_clip_norm: 1.0
+  log_gradient_norm: true
+  save_interval: 2000
+  evaluation_interval: 2000
+  evaluation_batches: 50
+  log_interval: 10
+  num_workers: 0
+  precision: bf16
+  seed: 42
+  output_dir: checkpoints/v2-pretraining
+  prompt_evaluation_interval: 8000
+  prompt_max_new_tokens: 64
+  prompt_temperature: 0.0
+  prompt_top_k: 0
+  prompt_top_p: 1.0
+  prompt_repetition_penalty: 1.0
+  prompt_seed: 42
+  prompt_evaluation_prompts:
+    - "Москва — столица"
+    - "Столица Франции —"
+    - "Земля вращается вокруг"
+    - "Солнце — это"
+    - "Солнечная система состоит из"
+    - "Вода при нормальном атмосферном давлении"
+    - "Python — это"
+    - "2 + 2 ="
+    - "7 * 8 ="

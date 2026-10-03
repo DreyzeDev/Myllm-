@@ -24,8 +24,17 @@ def test_toy_training_step_updates_weights_and_loss() -> None:
     inputs = torch.zeros((4, 8), dtype=torch.long)
     labels = torch.zeros_like(inputs)
     before = float(model(inputs, labels=labels).loss.item())
-    train_step(model, [(inputs, labels)], optimizer, torch.device("cpu"), gradient_clip_norm=1.0)
+    loss, gradient_norm = train_step(
+        model,
+        [(inputs, labels)],
+        optimizer,
+        torch.device("cpu"),
+        gradient_clip_norm=1.0,
+        return_gradient_norm=True,
+    )
     after = float(model(inputs, labels=labels).loss.item())
+    assert np.isfinite(loss)
+    assert np.isfinite(gradient_norm) and gradient_norm > 0
     assert torch.isfinite(torch.tensor(after))
     assert after < before
 

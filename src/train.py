@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import math
+import time
 from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
@@ -44,6 +45,7 @@ def evaluate_fixed_prompts(
     top_p: float,
     repetition_penalty: float,
     seed: int,
+    prompts: Iterable[str] = PROMPT_EVAL_PROMPTS,
 ) -> None:
     output_file = Path(output_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -54,7 +56,7 @@ def evaluate_fixed_prompts(
         model.eval()
         eos_token_id = tokenizer.token_id("<eos>")
         with output_file.open("a", encoding="utf-8") as log_file:
-            for prompt in PROMPT_EVAL_PROMPTS:
+            for prompt in prompts:
                 prompt_ids = tokenizer.encode(prompt, add_bos=True)
                 output_ids = generate_tokens(
                     model,
@@ -143,7 +145,8 @@ def train_step(
     precision: str = "fp32",
     gradient_clip_norm: float = 1.0,
     scaler: torch.amp.GradScaler | None = None,
-) -> float:
+    return_gradient_norm: bool = False,
+) -> float | tuple[float, float]:
     model.train()
     optimizer.zero_grad(set_to_none=True)
     batch_losses: list[float] = []
@@ -175,7 +178,10 @@ def train_step(
         scaler.update()
     else:
         optimizer.step()
-    return sum(batch_losses) / len(batch_losses)
+    mean_loss = sum(batch_losses) / len(batch_losses)
+    if return_gradient_norm:
+        return mean_loss, float(gradient_norm.detach().item())
+    return mean_loss
 
 
 def save_checkpoint(
@@ -258,6 +264,9 @@ def run_training(
     prompt_evaluation_interval = int(training.get("prompt_evaluation_interval", 0))
     if prompt_evaluation_interval < 0:
         raise ValueError("prompt_evaluation_interval must not be negative")
+    prompt_evaluation_prompts = tuple(training.get("prompt_evaluation_prompts", PROMPT_EVAL_PROMPTS))
+    if not prompt_evaluation_prompts or any(not isinstance(prompt, str) or not prompt.strip() for prompt in prompt_evaluation_prompts):
+        raise ValueError("prompt_evaluation_prompts must contain non-empty strings")
     set_seed(int(training["seed"]))
     device = select_device()
     precision = resolve_precision(str(training["precision"]), device)
@@ -382,12 +391,13 @@ def run_training(
     completed_step = start_step
     with log_path.open(log_mode, encoding="utf-8") as log_file:
         for step in range(start_step + 1, int(training["max_steps"]) + 1):
+            step_started_at = time.perf_counter()
             batches = next_micro_batches(int(training["gradient_accumulation_steps"]))
             tokens_this_step = sum(int(labels.numel()) for _, labels in batches)
             if device.type == "cuda":
                 torch.cuda.reset_peak_memory_stats(device)
             try:
-                loss = train_step(
+                train_metrics = train_step(
                     model,
                     batches,
                     optimizer,
@@ -395,26 +405,48 @@ def run_training(
                     precision,
                     float(training["gradient_clip_norm"]),
                     scaler,
+                    return_gradient_norm=bool(training.get("log_gradient_norm", False)),
                 )
             except torch.cuda.OutOfMemoryError:
                 logging.exception("CUDA OOM at step=%d; no checkpoint was overwritten", step)
                 raise
+            gradient_norm: float | None = None
+            if isinstance(train_metrics, tuple):
+                loss, gradient_norm = train_metrics
+            else:
+                loss = train_metrics
             if not math.isfinite(loss):
                 raise FloatingPointError(f"Non-finite training loss at step {step}")
+            if gradient_norm is not None and not math.isfinite(gradient_norm):
+                raise FloatingPointError(f"Non-finite gradient norm at step {step}")
             completed_step = step
             scheduler.step()
             tokens_trained += tokens_this_step
+            step_duration = max(time.perf_counter() - step_started_at, 1e-9)
             record: dict[str, float | int] = {
                 "step": step,
                 "train_loss": loss,
                 "learning_rate": float(optimizer.param_groups[0]["lr"]),
                 "tokens_trained": tokens_trained,
+                "seconds_per_step": step_duration,
+                "tokens_per_second": tokens_this_step / step_duration,
             }
+            if gradient_norm is not None:
+                record["gradient_norm"] = gradient_norm
             if device.type == "cuda":
                 record["cuda_peak_memory_bytes"] = int(torch.cuda.max_memory_allocated(device))
                 record["cuda_reserved_memory_bytes"] = int(torch.cuda.memory_reserved(device))
             if step % int(training["log_interval"]) == 0:
-                logging.info("step=%d train_loss=%.4f lr=%.3g", step, loss, record["learning_rate"])
+                if gradient_norm is None:
+                    logging.info("step=%d train_loss=%.4f lr=%.3g", step, loss, record["learning_rate"])
+                else:
+                    logging.info(
+                        "step=%d train_loss=%.4f grad_norm=%.4f lr=%.3g",
+                        step,
+                        loss,
+                        gradient_norm,
+                        record["learning_rate"],
+                    )
             stop_for_validation_rise = False
             if validation_loader is not None and step % int(training["evaluation_interval"]) == 0:
                 metrics = evaluate_model(
@@ -458,6 +490,7 @@ def run_training(
                     float(training.get("prompt_top_p", 0.9)),
                     float(training.get("prompt_repetition_penalty", 1.15)),
                     int(training.get("prompt_seed", 42)),
+                    prompt_evaluation_prompts,
                 )
             if stop_for_validation_rise:
                 logging.warning(
