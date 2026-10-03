@@ -33,16 +33,15 @@ P = V*H + L*(4*H^2 + 3*H*I + 2*H) + H
 
 ## Training resource estimate (RTX 5060 8 GB)
 
-Planning estimate: about **5–6.5 GiB total device use** with BF16, micro-batch
-1, sequence length 1,024, Flash SDPA, and gradient accumulation 16. This is
-estimated from the V1 training log (3.67 GB PyTorch peak allocated with
-micro-batch 4 and context 1,024), then scaling persistent optimizer state and
-activation shapes for V2. FP32 V2 weights, gradients, and AdamW first/second
-moments account for about 1.63 GiB before activations and CUDA/runtime
-workspaces. RTX 5060 currently reports BF16 and Flash SDPA support; this is a
-planning estimate, not a V2 benchmark. Keep V1 training stopped and start V2
-only from random initialization. The config uses micro-batch 1 with accumulation
-16; keep other GPU-heavy applications closed during the first authorized run.
+The authorized V2 probe used BF16, micro-batch 1, sequence length 1,024, Flash
+SDPA, and gradient accumulation 16. Across 150 optimizer steps, PyTorch peak
+allocated memory was **2.885 GiB** (2.973 GiB reserved in the probe; 2.874 GiB
+allocated in the full run's first steps). NVIDIA reported roughly 3.9 GiB used
+out of 8.15 GiB during training, with sampled temperatures of 61–67°C. The
+probe averaged about 19.4k tokens/s (0.846 s/step), had finite losses and
+gradients, validation loss fell from 8.321 at step 50 to 7.371 at step 150,
+and resume from step 100 passed. No OOM or NaN/Inf occurred. Micro-batch 2 was
+not enabled; micro-batch 1 leaves a stable memory margin.
 
 At roughly 20 training tokens per parameter, a compute-oriented first-pass
 pretraining reference is about **2.19 billion tokens**. The existing V1 train
@@ -52,8 +51,10 @@ config schedules 126,783 steps and about **2.077 billion training tokens**.
 
 The initial full-run config uses AdamW with a conservative peak LR of `2e-4`,
 about 4% warmup, cosine decay to 10% of peak LR, gradient clipping at 1.0,
-validation every 2,000 steps, prompt evaluation every 8,000 steps, and resumable
-checkpoints every 4,000 steps. Probe weights are diagnostic only; full
+validation and resumable checkpoints every 2,000 steps, and prompt evaluation
+every 8,000 steps. The measured probe implies about 29.8 hours of raw optimizer
+time to cover this split, before checkpointing and evaluation overhead. Probe
+weights are diagnostic only; full
 pretraining starts from a separate random initialization.
 
 ## Compatibility and status
@@ -70,3 +71,4 @@ does not refer to a pretrained checkpoint. The hardware probe uses a separate
 diagnostic output directory; its weights are not used to initialize the full
 pretraining run. V1 checkpoints and SFT datasets are outside the V2 training
 paths.
+
