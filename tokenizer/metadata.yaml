@@ -1,0 +1,15 @@
+name: MyLLM shared byte-level BPE tokenizer
+format: Hugging Face tokenizer.json
+vocabulary_size: 32000
+normalization: tokenizer configuration; dataset text normalized to NFC
+special_tokens:
+  - <pad>
+  - <bos>
+  - <eos>
+  - <unk>
+  - <|system|>
+  - <|user|>
+  - <|assistant|>
+artifact_path: tokenizer/tokenizer.json
+artifact_sha256: 0BA1F38984CB70BDB6337209781FC113730027CE1474108AF9EE6A463D4155A4
+artifact_note: The tokenizer artifact is ignored by Git; place the matching file at artifact_path before loading V2 checkpoints.

@@ -1,0 +1,686 @@
+dataset_name: MyLLM V2 109M SFT candidate
+version: sft-v2-109m-2026-10-05
+status: prepared_not_trained
+training_started: false
+base_checkpoint: checkpoints/v2-pretraining/step_126783
+base_checkpoint_immutable: true
+base_checkpoint_lock: checkpoints/v2-pretraining/FINAL_BASE_LOCK.json
+pretrained_weights_used: false
+tokenizer:
+  path: tokenizer/tokenizer.json
+  vocab_size: 32000
+chat_template: src.sft_data.encode_messages / encode_chat_prompt; <bos><|user|>...<|assistant|>...<eos>
+loss_policy: assistant message text plus terminal EOS only; system/user/role markers masked to -100
+packing: false
+context_length: 1024
+split_strategy: stable group_id grouping; 95/5 target; fixed evaluation held out
+seed: 20261005
+dataset:
+  total: 51714
+  train: 49128
+  validation: 2586
+  evaluation: 13
+  categories:
+    conversation: 10056
+    explanations: 3548
+    general_knowledge: 3922
+    instruction_following: 10507
+    language: 1459
+    math: 7570
+    multi_turn: 3889
+    programming: 6959
+    translation: 3804
+  source_types:
+    external_dataset: 1489
+    reaudited_synthetic: 5402
+    synthetic_computed: 23504
+    synthetic_curated: 21319
+  external_source_examples:
+    rubq_2_0: 1489
+files:
+  train:
+    path: train.jsonl
+    sha256: ad466fd81bb778726bcf211030f78e9bd11bd376c5388f4d668619ea9d31e5c7
+    examples: 49128
+    bytes: 32746767
+  validation:
+    path: validation.jsonl
+    sha256: f3899bfdd403641628bf7cce70e11b40a2916d7813fb73c0ec446f90450b0d23
+    examples: 2586
+    bytes: 1668969
+  evaluation:
+    path: evaluation.jsonl
+    sha256: 706ab1e9196a34c9e41467401fc10a021a159c5a75b4fb6b8e58a0b2157efc2c
+    examples: 13
+    bytes: 3897
+sources:
+- id: rubq_2_0
+  name: RuBQ 2.0 Russian question answering dataset
+  url: https://github.com/vladislavneon/RuBQ
+  license: CC BY-SA 4.0
+  license_url: https://creativecommons.org/licenses/by-sa/4.0/
+  attribution: vladislavneon/RuBQ contributors
+  scope: Only question_text and single-answer answer_text imported; answers[0] Russian aliases are used for spelling/capitalization
+    normalization, and the formatter clarifies units or repairs audited malformed phrasing. Paragraphs, queries,
+    and contexts were not used.
+  examples_in_dataset: 1489
+  source_files:
+  - path: sources/rubq/RuBQ_2.0_dev.json
+    sha256: 6CD20DCFAD3404736691C5DCEE271D19F579B6C5755A1AAD4C4DE644BC9DFD05
+    bytes: 1232673
+  - path: sources/rubq/RuBQ_2.0_test.json
+    sha256: 63D9E32A1BDEFB2DE713A9CCF3A0F9F0A4A48F2FDDDD35B3908D6846B63DC85B
+    bytes: 4980094
+  paragraphs_imported: 0
+- id: reaudited_synthetic_v1_subset
+  name: Selected synthetic examples from prior MyLLM V1 SFT data
+  url: null
+  license: Original project-authored/computed examples; no external text imported
+  scope: Each row rechecked; all Wikimedia rows excluded; exact assistant response and conversation dedup repeated.
+  examples_in_dataset:
+    language: 907
+    instruction_following: 2436
+    translation: 999
+    multi_turn: 70
+    programming: 990
+  input_file_checksums:
+  - path: data/sft/train.jsonl
+    sha256: 40d7c17a3362b9e6141392bb022b5ef889e943333191a7148846baf2f1b955f8
+    bytes: 22614138
+  - path: data/sft/validation.jsonl
+    sha256: 96417a26672b1d8543cb110959c80cf9b3bfc71e8bdeb3c58a7be886a3b4b0d7
+    bytes: 1229434
+- id: v2_authored_computed
+  name: New V2 task-specific authored/computed data
+  url: null
+  license: Project-authored synthetic examples; arithmetic and code-trace outputs computed deterministically
+  scope: No teacher model; no raw web text; no personal conversations; no secrets.
+  examples_in_dataset: 46312
+legacy_v1_audit:
+  used: true
+  wikimedia_examples_imported: 0
+  kept_by_category:
+    language: 907
+    instruction_following: 2436
+    translation: 999
+    multi_turn: 70
+    programming: 990
+  rejected_reasons:
+    non_synthetic_including_wikimedia: 18000
+    bare_numeric_not_assistant_style: 2000
+    awkward_english_multi_turn_planning_v5: 663
+    low_diversity_smalltalk_v4: 2560
+    conversation_examples_excluded_after_manual_spot_check: 440
+    quality_or_duplicate_gate: 1935
+generation:
+  script: scripts/build_sft_v2_109m_dataset.py
+  synthetic_teacher_model: false
+build_rejections:
+  repeated_user_prompt_cap: 1239
+  duplicate_assistant_response: 3380
+  rubq_multi_or_missing_answer: 888
+  rubq_unverified_or_outdated_capital: 64
+  rubq_answer_capitalization_canonicalized_from_alias: 159
+  rubq_manual_fact_review: 24
+  rubq_answer_text_canonicalized_from_alias: 18
+  rubq_article_like_or_non_atomic_answer: 110
+  rubq_time_sensitive_or_cause_of_death: 71
+  rubq_manual_fact_corrections: 3
+  rubq_plural_question_single_answer: 3
+  rubq_empty_or_long: 8
+  rubq_ambiguous_person_measurement: 1
+  rubq_language_or_pii: 4
+  rubq_exact_duplicate_question: 3
+  rubq_hidden_or_control_character: 4
+  rubq_exact_question_answer_conflict: 2
+  artificial_assistant_prefix_removed: 207
+  pii_or_secret: 8
+  duplicate_conversation: 2213
+  fixed_evaluation_prompt_leak: 1
+external_dataset_audit:
+  rubq_files_loaded:
+  - RuBQ_2.0_dev.json
+  - RuBQ_2.0_test.json
+  only_direct_qa_fields: true
+  paragraphs_loaded_or_used: false
+  single_answer_rows_only: true
+  manual_fact_review:
+    status: PASS
+    sample_size: 120
+    reviewed: 120
+    passed: 120
+    rejected: 0
+    sample_sha256: eae0a9fc8d966fc177dbaeadd034351174f431ded18934bc4d0f8342f3b542e3
+    row_by_row_full_source_review: false
+    stratification: round-robin across source file × question property × answer kind
+  automated_audit: PASS
+  automated_raw_rows: 2910
+  candidate_imported_rows: 1489
+  source_errors: 0
+quality_gates:
+  min_total_examples: 50000
+  target_ru_percent: 85-95
+  target_en_percent: 5-15
+  exact_assistant_duplicate_policy: globally rejected at build time
+  manual_sample_review: 'PASS: stratified sample of 120, 60 per RuBQ source file'
+  editorial_review_required_before_training: false
+  dataset_validation: PASS
+  assistant_only_masking: PASS
+  eos_coverage: 'PASS: 100%'
+  train_inference_template: PASS
+  split_isolation: PASS
+  context_1024_compatibility: PASS
+  tokenizer_compatibility: PASS
+  final_base_hash_lock: PASS
+  owner_instruction_required_to_start_training: true
+ready_for_v2_sft: true
+readiness: 'READY FOR V2 SFT: YES'
+language_audit:
+  declared:
+    en: 3694
+    ru: 48020
+  detected_user_prompts:
+    en: 3696
+    ru: 48018
+  ru_percent: 92.85
+  en_percent: 7.15
+diversity_audit:
+  assistant_turns: 55643
+  unique_normalized_assistant_responses: 55643
+  exact_duplicate_groups: 0
+  exact_duplicate_excess: 0
+  exact_unique_share_percent: 100.0
+  largest_template_family_share_percent: 0.31
+  same_template_near_duplicate_share_percent: 25.51
+  artificial_prefix_occurrences: {}
+  top_50_first_3_to_10_word_prefixes:
+  - word_count: 3
+    prefix: вот три подходящих
+    count: 231
+  - word_count: 3
+    prefix: из списка подойдут
+    count: 231
+  - word_count: 3
+    prefix: среди вариантов есть
+    count: 231
+  - word_count: 3
+    prefix: возьму эти три
+    count: 229
+  - word_count: 3
+    prefix: в качестве ответа
+    count: 229
+  - word_count: 3
+    prefix: один из возможных
+    count: 228
+  - word_count: 4
+    prefix: один из возможных наборов
+    count: 228
+  - word_count: 3
+    prefix: можно назвать такие
+    count: 227
+  - word_count: 3
+    prefix: подойдут такие пункты
+    count: 226
+  - word_count: 3
+    prefix: вот выбранные элементы
+    count: 223
+  - word_count: 3
+    prefix: три из перечисленных
+    count: 221
+  - word_count: 3
+    prefix: выбери удобный момент
+    count: 179
+  - word_count: 3
+    prefix: можно начать с
+    count: 179
+  - word_count: 3
+    prefix: если день загружен
+    count: 179
+  - word_count: 3
+    prefix: готовый отсортированный ряд
+    count: 175
+  - word_count: 3
+    prefix: от минимального к
+    count: 175
+  - word_count: 4
+    prefix: от минимального к максимальному
+    count: 175
+  - word_count: 3
+    prefix: нужный порядок такой
+    count: 175
+  - word_count: 3
+    prefix: ряд по возрастанию
+    count: 175
+  - word_count: 4
+    prefix: ряд по возрастанию выглядит
+    count: 175
+  - word_count: 5
+    prefix: ряд по возрастанию выглядит так
+    count: 175
+  - word_count: 3
+    prefix: вот короткое решение
+    count: 175
+  - word_count: 4
+    prefix: вот короткое решение для
+    count: 175
+  - word_count: 5
+    prefix: вот короткое решение для числа
+    count: 175
+  - word_count: 3
+    prefix: числа после сортировки
+    count: 175
+  - word_count: 3
+    prefix: от самого маленького
+    count: 175
+  - word_count: 4
+    prefix: от самого маленького до
+    count: 175
+  - word_count: 5
+    prefix: от самого маленького до самого
+    count: 175
+  - word_count: 6
+    prefix: от самого маленького до самого большого
+    count: 175
+  - word_count: 3
+    prefix: получится такой порядок
+    count: 175
+  - word_count: 3
+    prefix: сначала идут меньшие
+    count: 175
+  - word_count: 4
+    prefix: сначала идут меньшие числа
+    count: 175
+  - word_count: 3
+    prefix: запись в нужном
+    count: 175
+  - word_count: 4
+    prefix: запись в нужном порядке
+    count: 175
+  - word_count: 3
+    prefix: от меньшего к
+    count: 175
+  - word_count: 4
+    prefix: от меньшего к большему
+    count: 175
+  - word_count: 3
+    prefix: после перестановки получится
+    count: 175
+  - word_count: 3
+    prefix: вот последовательность от
+    count: 175
+  - word_count: 4
+    prefix: вот последовательность от меньшего
+    count: 175
+  - word_count: 5
+    prefix: вот последовательность от меньшего к
+    count: 175
+  - word_count: 6
+    prefix: вот последовательность от меньшего к большему
+    count: 175
+  - word_count: 3
+    prefix: в возрастающем порядке
+    count: 175
+  - word_count: 3
+    prefix: я бы записал
+    count: 175
+  - word_count: 4
+    prefix: я бы записал их
+    count: 175
+  - word_count: 5
+    prefix: я бы записал их так
+    count: 175
+  - word_count: 3
+    prefix: процент означает долю
+    count: 170
+  - word_count: 4
+    prefix: процент означает долю из
+    count: 170
+  - word_count: 5
+    prefix: процент означает долю из ста
+    count: 170
+  - word_count: 6
+    prefix: процент означает долю из ста расчёт
+    count: 170
+  - word_count: 7
+    prefix: процент означает долю из ста расчёт такой
+    count: 170
+  top_50_5grams:
+  - ngram: функция будет такой python def
+    count: 178
+  - ngram: ряд по возрастанию выглядит так
+    count: 175
+  - ngram: вот короткое решение для числа
+    count: 175
+  - ngram: от самого маленького до самого
+    count: 175
+  - ngram: самого маленького до самого большого
+    count: 175
+  - ngram: вот последовательность от меньшего к
+    count: 175
+  - ngram: последовательность от меньшего к большему
+    count: 175
+  - ngram: и проверим его функцией python
+    count: 175
+  - ngram: проверим его функцией python def
+    count: 175
+  - ngram: я бы записал их так
+    count: 175
+  - ngram: код выглядит так python def
+    count: 174
+  - ngram: процент означает долю из ста
+    count: 170
+  - ngram: означает долю из ста расчёт
+    count: 170
+  - ngram: долю из ста расчёт такой
+    count: 170
+  - ngram: чтобы найти процент от числа
+    count: 170
+  - ngram: найти процент от числа умножаем
+    count: 170
+  - ngram: процент от числа умножаем число
+    count: 170
+  - ngram: от числа умножаем число на
+    count: 170
+  - ngram: числа умножаем число на долю
+    count: 170
+  - ngram: сначала умножаем число на процент
+    count: 165
+  - ngram: умножаем число на процент затем
+    count: 165
+  - ngram: число на процент затем делим
+    count: 165
+  - ngram: на процент затем делим на
+    count: 165
+  - ngram: процент затем делим на сто
+    count: 165
+  - ngram: запишем процент как дробь со
+    count: 165
+  - ngram: процент как дробь со знаменателем
+    count: 165
+  - ngram: как дробь со знаменателем сто
+    count: 165
+  - ngram: можно посчитать по формуле число
+    count: 165
+  - ngram: посчитать по формуле число процент
+    count: 165
+  - ngram: по формуле число процент 100
+    count: 165
+  - ngram: подготовь место и материалы затем
+    count: 157
+  - ngram: место и материалы затем выполни
+    count: 157
+  - ngram: и материалы затем выполни один
+    count: 157
+  - ngram: материалы затем выполни один простой
+    count: 157
+  - ngram: затем выполни один простой шаг
+    count: 157
+  - ngram: выполни один простой шаг попробуй
+    count: 157
+  - ngram: возьми посильный объём чтобы закончить
+    count: 157
+  - ngram: посильный объём чтобы закончить без
+    count: 157
+  - ngram: объём чтобы закончить без спешки
+    count: 157
+  - ngram: на этом примере python def
+    count: 156
+  - ngram: может быть записана так python
+    count: 156
+  - ngram: быть записана так python def
+    count: 156
+  - ngram: сначала зададим код для пары
+    count: 156
+  - ngram: можно написать такую функцию python
+    count: 156
+  - ngram: написать такую функцию python def
+    count: 156
+  - ngram: так можно решить задачу для
+    count: 155
+  - ngram: можно решить задачу для значений
+    count: 155
+  - ngram: вот короткий код python def
+    count: 154
+  - ngram: функция может выглядеть так python
+    count: 154
+  - ngram: может выглядеть так python def
+    count: 154
+  top_50_8grams:
+  - ngram: чтобы найти процент от числа умножаем число на
+    count: 170
+  - ngram: найти процент от числа умножаем число на долю
+    count: 170
+  - ngram: сначала умножаем число на процент затем делим на
+    count: 165
+  - ngram: умножаем число на процент затем делим на сто
+    count: 165
+  - ngram: подготовь место и материалы затем выполни один простой
+    count: 157
+  - ngram: место и материалы затем выполни один простой шаг
+    count: 157
+  - ngram: и материалы затем выполни один простой шаг попробуй
+    count: 157
+  - ngram: briefly then decide whether the plan needs changing
+    count: 140
+  - ngram: you do not need to finish everything in
+    count: 140
+  - ngram: do not need to finish everything in one
+    count: 140
+  - ngram: not need to finish everything in one session
+    count: 140
+  - ngram: prepare only the essentials and leave the rest
+    count: 140
+  - ngram: only the essentials and leave the rest optional
+    count: 140
+  - ngram: spend a little time on it then decide
+    count: 140
+  - ngram: a little time on it then decide whether
+    count: 140
+  - ngram: little time on it then decide whether to
+    count: 140
+  - ngram: time on it then decide whether to continue
+    count: 140
+  - ngram: for a little while then take a break
+    count: 140
+  - ngram: prepare what you need first and adjust the
+    count: 140
+  - ngram: what you need first and adjust the plan
+    count: 140
+  - ngram: you need first and adjust the plan as
+    count: 140
+  - ngram: need first and adjust the plan as you
+    count: 140
+  - ngram: first and adjust the plan as you go
+    count: 140
+  - ngram: first check how much time you have then
+    count: 140
+  - ngram: check how much time you have then try
+    count: 140
+  - ngram: how much time you have then try to
+    count: 140
+  - ngram: выбери небольшой объём и выдели время на то
+    count: 118
+  - ngram: небольшой объём и выдели время на то чтобы
+    count: 118
+  - ngram: не старайся вместить всё оставь один результат по
+    count: 116
+  - ngram: старайся вместить всё оставь один результат по плану
+    count: 116
+  - ngram: запланируй небольшой отдых независимо от того закончишь ли
+    count: 114
+  - ngram: чтобы не прерываться заранее приготовь всё для задачи
+    count: 114
+  - ngram: свяжи сигнал с обычным моментом дня и подпиши
+    count: 114
+  - ngram: сигнал с обычным моментом дня и подпиши его
+    count: 114
+  - ngram: остановись на законченном этапе и вернись к плану
+    count: 114
+  - ngram: не делай отдых наградой за идеальное выполнение плана
+    count: 113
+  - ngram: шаг если расписание изменится выбери другой день для
+    count: 113
+  - ngram: если расписание изменится выбери другой день для попытки
+    count: 113
+  - ngram: день сначала реши сколько времени есть и подстрой
+    count: 113
+  - ngram: сначала реши сколько времени есть и подстрой под
+    count: 113
+  - ngram: реши сколько времени есть и подстрой под него
+    count: 113
+  - ngram: не ускоряйся ради завершения закончи один этап и
+    count: 113
+  - ngram: ускоряйся ради завершения закончи один этап и перенеси
+    count: 113
+  - ngram: ради завершения закончи один этап и перенеси остаток
+    count: 113
+  - ngram: завершения закончи один этап и перенеси остаток задачи
+    count: 113
+  - ngram: пусть на первую попытку уйдёт немного времени попробуй
+    count: 99
+  - ngram: для спокойного старта подготовь только самое нужное чтобы
+    count: 99
+  - ngram: не нужно готовиться слишком долго выбери удобный момент
+    count: 99
+  - ngram: нужно готовиться слишком долго выбери удобный момент и
+    count: 99
+  - ngram: сначала реши сколько времени у тебя есть и
+    count: 99
+  template_families_by_category:
+    conversation:
+      assistant_turns: 10056
+      template_family_count: 10056
+      largest_family_count: 1
+      largest_family_share_percent: 0.01
+      numeric_normalized_template_excess: 0
+      numeric_normalized_template_excess_share_percent: 0.0
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 10056
+    instruction_following:
+      assistant_turns: 10507
+      template_family_count: 7027
+      largest_family_count: 175
+      largest_family_share_percent: 1.67
+      numeric_normalized_template_excess: 3480
+      numeric_normalized_template_excess_share_percent: 33.12
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 10507
+    programming:
+      assistant_turns: 6959
+      template_family_count: 5802
+      largest_family_count: 80
+      largest_family_share_percent: 1.15
+      numeric_normalized_template_excess: 1157
+      numeric_normalized_template_excess_share_percent: 16.63
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 6959
+    general_knowledge:
+      assistant_turns: 3922
+      template_family_count: 3577
+      largest_family_count: 149
+      largest_family_share_percent: 3.8
+      numeric_normalized_template_excess: 345
+      numeric_normalized_template_excess_share_percent: 8.8
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 3922
+    multi_turn:
+      assistant_turns: 7818
+      template_family_count: 7818
+      largest_family_count: 1
+      largest_family_share_percent: 0.01
+      numeric_normalized_template_excess: 0
+      numeric_normalized_template_excess_share_percent: 0.0
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 7818
+    explanations:
+      assistant_turns: 3548
+      template_family_count: 1708
+      largest_family_count: 34
+      largest_family_share_percent: 0.96
+      numeric_normalized_template_excess: 1840
+      numeric_normalized_template_excess_share_percent: 51.86
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 3548
+    math:
+      assistant_turns: 7570
+      template_family_count: 198
+      largest_family_count: 125
+      largest_family_share_percent: 1.65
+      numeric_normalized_template_excess: 7372
+      numeric_normalized_template_excess_share_percent: 97.38
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 7570
+    translation:
+      assistant_turns: 3804
+      template_family_count: 3804
+      largest_family_count: 1
+      largest_family_share_percent: 0.03
+      numeric_normalized_template_excess: 0
+      numeric_normalized_template_excess_share_percent: 0.0
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 3804
+    language:
+      assistant_turns: 1459
+      template_family_count: 1459
+      largest_family_count: 1
+      largest_family_share_percent: 0.07
+      numeric_normalized_template_excess: 0
+      numeric_normalized_template_excess_share_percent: 0.0
+      exact_duplicate_assistant_turns: 0
+      unique_normalized_responses: 1459
+token_audit:
+  tokenizer_vocab: 32000
+  context_length: 1024
+  max_sequence_tokens: 598
+  mean_sequence_tokens: 47.64
+  mean_user_tokens_per_turn: 19.58
+  mean_assistant_tokens_per_turn: 24.69
+  max_single_answer_chars: 2582
+  max_single_answer_tokens: 579
+  assistant_response_length_buckets:
+    extended_over_500: 1
+    long_150_500: 21
+    medium_33_149: 12751
+    short_1_32: 42870
+  conversation_sequence_length_buckets:
+    extended_over_500: 1
+    long_150_500: 26
+    medium_33_149: 37678
+    short_1_32: 14009
+integrity_audit:
+  invalid_records: 0
+  eos_failures: 0
+  assistant_mask_failures: 0
+  train_inference_template_mismatches: 0
+  fixed_eval_prompt_leaks: 0
+  exact_user_prompt_split_leaks: 0
+  semantic_group_split_leaks: 0
+  tokenizer_compatibility: true
+  context_compatibility: true
+  final_base_lock: PASS
+  license_provenance: PASS
+  math_programming_share_percent: 28.09
+  category_balance_minimums:
+    conversation:
+      actual: 10056
+      minimum: 9000
+      pass: true
+    multi_turn:
+      actual: 3889
+      minimum: 3500
+      pass: true
+    explanations:
+      actual: 3548
+      minimum: 2500
+      pass: true
+    general_knowledge:
+      actual: 3922
+      minimum: 2500
+      pass: true
+    language:
+      actual: 1459
+      minimum: 1200
+      pass: true
+no_sft_started: true
+audit_report: audit_report.json (local, git-ignored)
+audit_document: docs/myllm_v2_sft_dataset_audit.md

@@ -7,6 +7,17 @@ venv/
 data/raw/*
 data/cleaned/*
 data/processed/*
+data/sft/*.jsonl
+data/sft/validation_report.json
+data/sft/audit_sample.jsonl
+data/sft_v2/*.jsonl
+data/sft_v2/sources/
+data/sft_v2/audit_report.json
+data/sft_v2/rubq_automated_audit.json
+data/sft_v2/rubq_manual_review_sample.json
+data/sft_v2/rubq_manual_review_log.json
+data/sft_v2/build_rejections.json
+data/sft_v2/archive_prebalance_20261005/
 !data/raw/.gitkeep
 !data/cleaned/.gitkeep
 !data/processed/.gitkeep
