@@ -309,6 +309,21 @@ python -m src.generate \
 
 ---
 
+## 🧪 MyLLM V2 — подготовка SFT
+
+Для V2 (109,529,856 параметров) подготовлен отдельный русскоязычный SFT dataset:
+51,714 примера, включая 49,128 train и 2,586 validation. Баланс запросов —
+92,85% русский и 7,15% английский. Проверены assistant-only loss masking,
+обучаемый EOS, общий train/inference template, split isolation, RuBQ provenance
+и блокировка base checkpoint `checkpoints/v2-pretraining/step_126783`.
+
+Датасет и инструменты аудита готовы к следующему этапу, но SFT **не запускался**.
+Подробные категории, источники, повторы, длины и результаты проверок описаны в
+[README датасета](data/sft_v2/README.md) и [полном отчёте аудита](docs/myllm_v2_sft_dataset_audit.md).
+JSONL, исходные архивы, отчёты и checkpoints остаются локальными и исключены из Git.
+
+---
+
 ## 🗂️ Структура проекта
 
 ```text
