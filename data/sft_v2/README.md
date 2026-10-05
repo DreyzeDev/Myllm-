@@ -6,7 +6,9 @@ candidate, not a trained model. The starting point remains the immutable V2 base
 
 ## Final candidate
 
-- 51,714 conversations: 49,128 train, 2,586 validation, 13 fixed evaluation prompts.
+- 51,714 train/validation conversations: 49,128 train and 2,586 validation.
+  The 13 fixed evaluation prompts are stored separately and are not included in
+  that count.
 - User-prompt language estimate: 92.85% Russian and 7.15% English.
 - Categories:
 

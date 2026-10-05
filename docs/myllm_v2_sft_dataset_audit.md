@@ -8,8 +8,9 @@ Audit date: 2026-10-05. Dataset is prepared only; no SFT training has run.
 | --- | ---: |
 | Train | 49,128 |
 | Validation | 2,586 |
-| Fixed evaluation | 13 |
-| **Total** | **51,714** |
+| **Train + validation** | **51,714** |
+| Fixed evaluation (separate) | 13 |
+| **All stored records** | **51,727** |
 
 Category counts and share of all conversations:
 
